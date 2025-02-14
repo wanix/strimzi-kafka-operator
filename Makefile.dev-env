@@ -1,0 +1,78 @@
+SHELL = /usr/bin/env bash
+
+.PHONY : dev_requirements \
+	dev_clean \
+	minikube_start \
+	minikube_stop \
+	minikube_clean
+
+docker_registry=$(or $(DOCKER_REGISTRY),docker.io)
+docker_org=$(or $(DOCKER_ORG),$(shell git remote get-url origin | cut -f2 -d":" | cut -f1 -d"/"))
+
+k8scluster=strimzi-k8s
+k8s_ns=strimzi-dev
+kubeconfig=kubeconfig
+kubeversion=$(shell grep "kubectl " .tool-versions | cut -d " " -f 2)
+
+minikubeResources=--memory 2048 --cpus 2
+minikubeDriver=docker
+minikubeNodes=3
+
+
+dev_clean:
+	-mvn clean
+	-gem uninstall asciidoctor-pdf
+	-gem uninstall asciidoctor
+	-grep -v '^\s*#' .tool-versions \
+	  | grep '\S' \
+	  | xargs -L 1 asdf uninstall
+
+dev_requirements:
+	# for Ruby: sudo apt-get install libz-dev libssl-dev libffi-dev libyaml-dev
+	@grep -v '^\s*#' .tool-versions \
+	  | grep '\S' \
+	  | awk '{print $1}' \
+	  | xargs -L 1 asdf plugin add
+
+	-asdf install
+
+	gem install asciidoctor
+	gem install asciidoctor-pdf
+	gem update asciidoctor
+	gem update asciidoctor-pdf
+
+	mvn clean
+	mvn install -DskipTests
+
+minikube_start:
+	@echo "-- Starting Minikube"
+	@minikube start -p $(k8scluster) $(minikubeResources) \
+		--kubernetes-version=$(kubeversion) \
+		--driver=$(minikubeDriver) \
+		--nodes $(minikubeNodes) \
+
+minikube_stop:
+	-@minikube stop -p $(k8scluster)
+
+minikube_clean: minikube_stop
+	-@minikube delete -p $(k8scluster)
+
+minikube_dashboard:
+	@echo "-- Launching Minikube dashboard"
+	@minikube dashboard -p $(k8scluster)
+
+build: minikube_start
+	make clean
+	DOCKER_REGISTRY="$(docker_registry)" DOCKER_ORG="$(docker_org)" make MVN_ARGS='-DskipTests' all
+
+build_deploy: build
+	sed -Ei -e "s#(image|value): quay.io/strimzi/([a-z0-9-]+):latest#\1: $(docker_registry)/$(docker_org)/\2:latest#" \
+	  -e "s#(image|value): quay.io/strimzi/([a-zA-Z0-9-]+:[0-9.]+)#\1: $$(docker_registry)/$(docker_org)/\2#" \
+	  -e "s#([0-9.]+)=quay.io/strimzi/([a-zA-Z0-9-]+:[a-zA-Z0-9.-]+-kafka-[0-9.]+)#\1=$$(docker_registry)/$(docker_org)/\2#" \
+	  packaging/install/cluster-operator/060-Deployment-strimzi-cluster-operator.yaml
+	sed -Ei "s/myproject/$(k8s_ns)/g" packaging/install/cluster-operator/*RoleBinding*.yaml
+	kubectl -n $(k8s_ns) create -f packaging/install/cluster-operator
+	kubectl -n $(k8s_ns) create -f packaging/examples/kafka/kafka-ephemeral.yaml
+
+env_test:
+	echo $(docker_registry)
