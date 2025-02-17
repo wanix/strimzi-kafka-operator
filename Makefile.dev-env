@@ -44,6 +44,8 @@ dev_requirements:
 	mvn clean
 	mvn install -DskipTests
 
+	docker run --privileged --rm tonistiigi/binfmt --install all
+
 minikube_start:
 	@echo "-- Starting Minikube"
 	@minikube start -p $(k8scluster) $(minikubeResources) \
