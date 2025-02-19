@@ -66,7 +66,7 @@ minikube_dashboard:
 build: minikube_start
 	docker buildx prune -f
 	make clean
-	DOCKER_REGISTRY="$(docker_registry)" DOCKER_ORG="$(docker_org)" make MVN_ARGS='-DskipTests' all
+	DOCKER_REGISTRY="$(docker_registry)" DOCKER_ORG="$(docker_org)" MVN_ARGS="-Dmaven.test.skip=true" make all
 
 build_deploy: build
 	sed -Ei -e "s#(image|value): quay.io/strimzi/([a-z0-9-]+):latest#\1: $(docker_registry)/$(docker_org)/\2:latest#" \
