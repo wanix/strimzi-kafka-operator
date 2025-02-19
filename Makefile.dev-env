@@ -64,6 +64,7 @@ minikube_dashboard:
 	@minikube dashboard -p $(k8scluster)
 
 build: minikube_start
+	docker buildx prune -f
 	make clean
 	DOCKER_REGISTRY="$(docker_registry)" DOCKER_ORG="$(docker_org)" make MVN_ARGS='-DskipTests' all
 
