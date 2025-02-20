@@ -200,6 +200,19 @@
                                 <ignoredUnusedDeclaredDependency>io.fabric8:kubernetes-httpclient-jdk</ignoredUnusedDeclaredDependency>
                                 <ignoredUnusedDeclaredDependency>org.apache.logging.log4j:log4j-slf4j-impl</ignoredUnusedDeclaredDependency>
                                 <ignoredUnusedDeclaredDependency>org.mockito:mockito-inline</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.apache.logging.log4j:log4j-api</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:strimzi-test-container</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:test</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:mockkube</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.junit.jupiter:junit-jupiter-api</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.junit.jupiter:junit-jupiter-params</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.hamcrest:hamcrest</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mockito:mockito-core</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:operator-common</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mock-server:mockserver-netty</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mock-server:mockserver-core</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mock-server:mockserver-client-java</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:certificate-manager</ignoredUnusedDeclaredDependency>
                             </ignoredUnusedDeclaredDependencies>
                             <ignoredNonTestScopedDependencies>
                                 <ignoredNonTestScopedDependency>org.apache.logging.log4j:log4j-api</ignoredNonTestScopedDependency>
