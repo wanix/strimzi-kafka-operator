@@ -27,7 +27,7 @@ Example of usage:
 
  - Get the dev files from dev-env branch:
 
-    $$> git checkout dev-env .tool-versions Makefile.dev-env
+    $$> git checkout wanix/dev-env .tool-versions Makefile.dev-env
 
  - Have a look on Strimzi dev doc for the vars you can play with: https://github.com/strimzi/strimzi-kafka-operator/blob/main/development-docs/DEV_GUIDE.md
 
