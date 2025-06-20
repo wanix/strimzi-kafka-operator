@@ -1,8 +1,8 @@
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
-LABEL org.opencontainers.image.source='https://github.com/strimzi/strimzi-kafka-operator'
+LABEL org.opencontainers.image.source='https://github.com/wanix/strimzi-kafka-operator'
 
-ARG JAVA_VERSION=17
+ARG JAVA_VERSION=21
 ARG TARGETOS
 ARG TARGETARCH
 ARG strimzi_version
@@ -21,7 +21,7 @@ RUN microdnf update -y \
     && microdnf reinstall -y tzdata \
     && microdnf clean all -y
 
-ENV JAVA_HOME=/usr/lib/jvm/jre-17
+ENV JAVA_HOME=/usr/lib/jvm/jre-${JAVA_VERSION}
 
 #####
 # Add Tini

@@ -1,6 +1,6 @@
-FROM registry.access.redhat.com/ubi9/openjdk-17:1.20
+FROM registry.access.redhat.com/ubi9/openjdk-21:1.22
 
-LABEL org.opencontainers.image.source='https://github.com/strimzi/strimzi-kafka-operator'
+LABEL org.opencontainers.image.source='https://github.com/wanix/strimzi-kafka-operator'
 
 ARG strimzi_version
 

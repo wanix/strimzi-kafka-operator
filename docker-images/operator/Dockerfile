@@ -1,6 +1,6 @@
 FROM strimzi/base:latest
 
-LABEL org.opencontainers.image.source='https://github.com/strimzi/strimzi-kafka-operator'
+LABEL org.opencontainers.image.source='https://github.com/wanix/strimzi-kafka-operator'
 
 # Add strimzi user with UID 1001
 # The user is in the group 0 to have access to the mounted volumes and storage
