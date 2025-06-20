@@ -10,6 +10,8 @@
 * [Marlow Navigation](https://marlow-navigation.com/)
 * [Red Hat](https://www.redhat.com/en/)
     * [AMQ Streams](https://www.redhat.com/en/resources/amq-streams-datasheet)
+* [Randoli](https://www.randoli.io)
+    * Use Strimzi for powering a distributed control plane in our Observability & Cost Management solutions
 * [SBB CFF FFS](https://www.sbb.ch/en/home.html)
 * [Swisscom](https://www.swisscom.ch/)
 * [CN Group](https://www.cngroup.dk/)
@@ -27,6 +29,11 @@
     * Use Strimzi to run their Kafka fleet of 500 brokers, data replication with Mirror Maker and CDC pipelines with Kafka Connect. 
 * [Alauda](https://www.alauda.io/)
     * Use Strimzi to provide Kafka as a Service on a cloud native platform
+* [Cloudera](https://www.cloudera.com/products/stream-processing.html)
+* [SURF](https://surf.nl)
+   * Use Strimzi to create a (streaming) telemetry platform and EDA for Network Orchestration.
+* [AppsFlyer](https://www.appsflyer.com/)
+  * Running dozens of high-throughput clusters, handling tens of millions of messages per second, relying on the local ephemeral storage.
 
 Are you currently using Strimzi in production?
 Please let us know by adding your company name and, if you want, a description of your use case to this document!

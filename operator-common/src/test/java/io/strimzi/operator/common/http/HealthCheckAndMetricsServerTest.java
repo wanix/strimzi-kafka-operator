@@ -6,8 +6,8 @@ package io.strimzi.operator.common.http;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
-import io.micrometer.prometheus.PrometheusConfig;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.strimzi.operator.common.MetricsProvider;
 import io.strimzi.operator.common.MicrometerMetricsProvider;
 import io.strimzi.test.TestUtils;
@@ -55,7 +55,7 @@ public class HealthCheckAndMetricsServerTest {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode(), is(200));
             assertThat(response.headers().map().get("Content-Type").size(), is(1));
-            assertThat(response.headers().map().get("Content-Type").get(0), is("text/plain; version=0.0.4;charset=utf-8"));
+            assertThat(response.headers().map().get("Content-Type").get(0), is("text/plain; version=0.0.4; charset=UTF-8"));
             assertThat(response.body(), containsString("my_metric_total 1.0"));
         } finally {
             server.stop();

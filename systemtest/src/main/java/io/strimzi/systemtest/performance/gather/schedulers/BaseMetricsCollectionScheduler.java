@@ -4,8 +4,8 @@
  */
 package io.strimzi.systemtest.performance.gather.schedulers;
 
+import io.skodjob.testframe.resources.KubeResourceManager;
 import io.strimzi.systemtest.performance.PerformanceConstants;
-import io.strimzi.systemtest.resources.ResourceManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -14,9 +14,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Abstract class BaseMetricsCollectionScheduler provides a structured approach to gather metrics.
@@ -43,9 +45,35 @@ public abstract class BaseMetricsCollectionScheduler {
     protected final Map<Long, Map<String, List<Double>>> metricsStore = new TreeMap<>();
     protected ScheduledExecutorService scheduler;
 
-    public BaseMetricsCollectionScheduler(String selector) {
+    private static final Map<Class<? extends BaseMetricsCollectionScheduler>, BaseMetricsCollectionScheduler> INSTANCES = new ConcurrentHashMap<>();
+
+    protected BaseMetricsCollectionScheduler(String selector) {
         this.selector = selector;
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
+    }
+
+    /**
+     * Generic singleton factory for subclasses of {@link BaseMetricsCollectionScheduler}.
+     * <p>This method ensures that only a single instance of a given scheduler class is created and cached.
+     * It uses the provided {@code supplier} to create the instance if it has not already been initialized.</p>
+     *
+     * <p><strong>Important:</strong> If you call this method multiple times with the same {@code schedulerClass}
+     * but different supplier parameters (e.g., passing different constructor arguments), only the supplier from
+     * the first invocation will be used. Subsequent suppliers will be ignored, and no exception will be thrown.</p>
+     *
+     * <p>This means that <em>you must ensure</em> the first call to this method uses the desired configuration,
+     * and all later calls are consistent and do not rely on the supplier being evaluated again.</p>
+     *
+     * @param schedulerClass     Class of the scheduler
+     * @param supplier           Supplier that creates the instance if missing
+     * @return The singleton instance
+     */
+    @SuppressWarnings("unchecked")
+    protected static <SchedulerType extends BaseMetricsCollectionScheduler> SchedulerType getInstance(Class<SchedulerType> schedulerClass, Supplier<SchedulerType> supplier) {
+        return (SchedulerType) INSTANCES.computeIfAbsent(schedulerClass, cls -> {
+            LOGGER.debug("Creating singleton for {}", cls.getSimpleName());
+            return supplier.get();
+        });
     }
 
     /**
@@ -82,11 +110,11 @@ public abstract class BaseMetricsCollectionScheduler {
      */
     public void startCollecting(long initialDelay, long interval, TimeUnit unit) {
         // Capture the context in the thread where startCollecting is called
-        final ExtensionContext currentContext = ResourceManager.getTestContext();
+        final ExtensionContext currentContext = KubeResourceManager.get().getTestContext();
 
         final Runnable task = () -> {
             // Set the context specifically for a new thread to ensure thread-local data is available
-            ResourceManager.setTestContext(currentContext);
+            KubeResourceManager.get().setTestContext(currentContext);
             executeMetricsCollection();
         };
 

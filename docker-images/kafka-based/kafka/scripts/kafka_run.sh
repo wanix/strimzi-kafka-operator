@@ -14,7 +14,12 @@ echo "STRIMZI_BROKER_ID=${STRIMZI_BROKER_ID}"
 export GC_LOG_ENABLED="false"
 
 if [ -z "$KAFKA_LOG4J_OPTS" ]; then
-  export KAFKA_LOG4J_OPTS="-Dlog4j.configuration=file:$KAFKA_HOME/custom-config/log4j.properties"
+  if [[ "${KAFKA_VERSION:0:1}" == "3" ]]
+  then
+    export KAFKA_LOG4J_OPTS="-Dlog4j.configuration=file:$KAFKA_HOME/custom-config/log4j.properties"
+  else
+    export KAFKA_LOG4J_OPTS="-Dlog4j2.configurationFile=$KAFKA_HOME/custom-config/log4j2.properties"
+  fi
 fi
 
 . ./set_kafka_jmx_options.sh "${STRIMZI_JMX_ENABLED}" "${STRIMZI_JMX_USERNAME}" "${STRIMZI_JMX_PASSWORD}"
@@ -28,8 +33,8 @@ if [ "$FIPS_MODE" = "disabled" ]; then
     export KAFKA_OPTS="${KAFKA_OPTS} -Dcom.redhat.fips=false"
 fi
 
-# enabling Prometheus JMX exporter as Java agent
-if [ "$KAFKA_METRICS_ENABLED" = "true" ]; then
+# Enable Prometheus JMX Exporter as Java agent
+if [ "$KAFKA_JMX_EXPORTER_ENABLED" = "true" ]; then
   KAFKA_OPTS="${KAFKA_OPTS} -javaagent:$(ls "$JMX_EXPORTER_HOME"/jmx_prometheus_javaagent*.jar)=9404:$KAFKA_HOME/custom-config/metrics-config.json"
   export KAFKA_OPTS
 fi

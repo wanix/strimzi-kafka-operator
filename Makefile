@@ -14,7 +14,7 @@ ifneq ($(RELEASE_VERSION),latest)
   GITHUB_VERSION = $(RELEASE_VERSION)
 endif
 
-SUBDIRS=kafka-agent tracing-agent crd-annotations test crd-generator api mockkube certificate-manager operator-common config-model config-model-generator cluster-operator topic-operator user-operator kafka-init systemtest docker-images/artifacts packaging/helm-charts/helm3 packaging/install packaging/examples
+SUBDIRS=kafka-agent kafka-agent-3 tracing-agent crd-annotations test crd-generator api mockkube certificate-manager operator-common config-model config-model-generator cluster-operator topic-operator user-operator kafka-init systemtest docker-images/artifacts packaging/helm-charts/helm3 packaging/install packaging/examples
 DOCKERDIRS=docker-images/base docker-images/operator docker-images/kafka-based docker-images/maven-builder docker-images/kaniko-executor
 DOCKER_TARGETS=docker_build docker_push docker_tag docker_load docker_save docker_amend_manifest docker_push_manifest docker_sign_manifest docker_delete_manifest docker_delete_archive docker_sbom docker_push_sbom
 JAVA_TARGETS=java_build java_install java_clean
@@ -141,8 +141,8 @@ spotbugs: $(SUBDIRS)
 docu_pushtowebsite:
 	./.azure/scripts/docu-push-to-website.sh
 
-pushtonexus:
-	./.azure/scripts/push-to-nexus.sh
+pushtocentral:
+	./.azure/scripts/push-to-central.sh
 
 release_docu: docu_html docu_htmlnoheader docu_pdf
 	mkdir -p strimzi-$(RELEASE_VERSION)/docs/html

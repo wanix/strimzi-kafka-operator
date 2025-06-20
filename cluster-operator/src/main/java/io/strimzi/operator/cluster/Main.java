@@ -6,7 +6,7 @@ package io.strimzi.operator.cluster;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.strimzi.certs.OpenSslCertManager;
 import io.strimzi.operator.cluster.leaderelection.LeaderElectionManager;
 import io.strimzi.operator.cluster.model.securityprofiles.PodSecurityProviderFactory;
@@ -271,7 +271,7 @@ public class Main {
                 })
                 .listen(HEALTH_SERVER_PORT).onComplete(ar -> {
                     if (ar.succeeded()) {
-                        LOGGER.info("Health and metrics server is ready on port {})", HEALTH_SERVER_PORT);
+                        LOGGER.info("Health and metrics server is ready on port {}", HEALTH_SERVER_PORT);
                     } else {
                         LOGGER.error("Failed to start health and metrics webserver on port {}", HEALTH_SERVER_PORT, ar.cause());
                     }

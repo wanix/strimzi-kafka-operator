@@ -4,6 +4,7 @@
  */
 package io.strimzi.systemtest.security.oauth;
 
+import io.skodjob.testframe.resources.KubeResourceManager;
 import io.strimzi.api.kafka.model.common.CertSecretSourceBuilder;
 import io.strimzi.api.kafka.model.kafka.listener.GenericKafkaListener;
 import io.strimzi.api.kafka.model.kafka.listener.GenericKafkaListenerBuilder;
@@ -13,9 +14,10 @@ import io.strimzi.systemtest.Environment;
 import io.strimzi.systemtest.TestConstants;
 import io.strimzi.systemtest.annotations.IPv6NotSupported;
 import io.strimzi.systemtest.keycloak.KeycloakInstance;
-import io.strimzi.systemtest.resources.NamespaceManager;
 import io.strimzi.systemtest.resources.keycloak.SetupKeycloak;
+import io.strimzi.systemtest.resources.operator.SetupClusterOperator;
 import io.strimzi.systemtest.templates.specific.ScraperTemplates;
+import io.strimzi.systemtest.utils.kubeUtils.NamespaceUtils;
 import io.strimzi.systemtest.utils.kubeUtils.objects.SecretUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,7 +30,6 @@ import java.util.function.Function;
 
 import static io.strimzi.systemtest.TestTags.OAUTH;
 import static io.strimzi.systemtest.TestTags.REGRESSION;
-import static io.strimzi.test.k8s.KubeClusterResource.kubeClient;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @Tag(OAUTH)
@@ -115,17 +116,20 @@ public class OauthAbstractST extends AbstractST {
     };
 
     protected void setupCoAndKeycloak(String keycloakNamespace) {
-        clusterOperator.defaultInstallation().createInstallation().runInstallation();
+        SetupClusterOperator
+            .getInstance()
+            .withDefaultConfiguration()
+            .install();
 
-        resourceManager.createResourceWithoutWait(ScraperTemplates.scraperPod(Environment.TEST_SUITE_NAMESPACE, TestConstants.SCRAPER_NAME).build());
+        KubeResourceManager.get().createResourceWithoutWait(ScraperTemplates.scraperPod(Environment.TEST_SUITE_NAMESPACE, TestConstants.SCRAPER_NAME).build());
 
         LOGGER.info("Deploying keycloak");
 
         // this is need for cluster-wide OLM (creating `infra-namespace` for Keycloak)
         // Keycloak do not support cluster-wide namespace, and thus we need it to deploy in non-OLM cluster wide namespace
         // (f.e., our `infra-namespace`)
-        if (kubeClient().getNamespace(Environment.TEST_SUITE_NAMESPACE) == null) {
-            NamespaceManager.getInstance().createNamespaceAndPrepare(Environment.TEST_SUITE_NAMESPACE);
+        if (!KubeResourceManager.get().kubeClient().namespaceExists(Environment.TEST_SUITE_NAMESPACE)) {
+            NamespaceUtils.createNamespaceAndPrepare(Environment.TEST_SUITE_NAMESPACE);
         }
 
         SetupKeycloak.deployKeycloakOperator(Environment.TEST_SUITE_NAMESPACE, keycloakNamespace);
@@ -160,9 +164,10 @@ public class OauthAbstractST extends AbstractST {
      */
     protected final void verifyOauthConfiguration(final String componentLogs) {
         for (Map.Entry<String, Object> configField : COMPONENT_FIELDS_TO_VERIFY.entrySet()) {
-            assertThat(componentLogs, CoreMatchers.containsString(configField.getKey() + ": " + configField.getValue()));
+            String expectedKeyValue = configField.getKey() + ": " + configField.getValue();
+            assertThat(String.format("Component's log doesn't contain expected key/value: %s", expectedKeyValue), componentLogs.contains(expectedKeyValue), CoreMatchers.is(true));
         }
-        assertThat(componentLogs, CoreMatchers.containsString("Successfully logged in"));
+        assertThat("Component's log doesn't contain 'Successfully logged in' sentence", componentLogs.contains("Successfully logged in"), CoreMatchers.is(true));
     }
 
     /**
@@ -172,9 +177,10 @@ public class OauthAbstractST extends AbstractST {
      */
     protected final void verifyOauthListenerConfiguration(final String kafkaLogs) {
         for (Map.Entry<String, Object> configField : LISTENER_FIELDS_TO_VERIFY.entrySet()) {
-            assertThat(kafkaLogs, CoreMatchers.containsString(configField.getKey() + ": " + configField.getValue()));
+            String expectedKeyValue = configField.getKey() + ": " + configField.getValue();
+            assertThat(String.format("Kafka's log doesn't contain expected key/value: %s", expectedKeyValue), kafkaLogs.contains(expectedKeyValue), CoreMatchers.is(true));
         }
-        assertThat(kafkaLogs, CoreMatchers.containsString("Successfully logged in"));
+        assertThat("Kafka's log doesn't contain 'Successfully logged in' sentence", kafkaLogs.contains("Successfully logged in"), CoreMatchers.is(true));
     }
 }
 

@@ -4,10 +4,10 @@
  */
 package io.strimzi.systemtest.performance.utils;
 
+import io.skodjob.testframe.resources.KubeResourceManager;
 import io.strimzi.api.kafka.model.topic.KafkaTopicSpecBuilder;
 import io.strimzi.systemtest.enums.ConditionStatus;
 import io.strimzi.systemtest.enums.CustomResourceStatus;
-import io.strimzi.systemtest.resources.ResourceManager;
 import io.strimzi.systemtest.storage.TestStorage;
 import io.strimzi.systemtest.utils.kafkaUtils.KafkaTopicScalabilityUtils;
 import io.strimzi.systemtest.utils.kafkaUtils.KafkaTopicUtils;
@@ -37,7 +37,7 @@ public class TopicOperatorPerformanceUtils {
         "segment.ms", 123456L, "retention.bytes", 9876543L, "segment.bytes", 321654L, "flush.messages", 456123L);
     private static final int AVAILABLE_CPUS = Runtime.getRuntime().availableProcessors();
 
-    public static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(AVAILABLE_CPUS);
+    private static ExecutorService executorService = Executors.newFixedThreadPool(AVAILABLE_CPUS);
 
     private TopicOperatorPerformanceUtils() {}  // Prevent instantiation
 
@@ -76,7 +76,7 @@ public class TopicOperatorPerformanceUtils {
     public static void processKafkaTopicBatchesAsync(TestStorage testStorage, int numberOfTopics) {
         final int topicsPerBatch = (numberOfTopics + AVAILABLE_CPUS - 1) / AVAILABLE_CPUS; // Ensures all topics are covered
 
-        final ExtensionContext currentContext = ResourceManager.getTestContext();
+        final ExtensionContext currentContext = KubeResourceManager.get().getTestContext();
         final CompletableFuture<?>[] futures = new CompletableFuture[AVAILABLE_CPUS];
 
         for (int batch = 0; batch < AVAILABLE_CPUS; batch++) {
@@ -103,9 +103,9 @@ public class TopicOperatorPerformanceUtils {
      */
     private static CompletableFuture<Void> processBatch(int start, int end, ExtensionContext currentContext,
                                                         TestStorage testStorage) {
-        return CompletableFuture.runAsync(() -> performCreationWithWait(start, end, currentContext, testStorage), EXECUTOR)
-            .thenRunAsync(() -> performModificationWithWait(start, end, currentContext, testStorage, KAFKA_TOPIC_CONFIG_TO_MODIFY), EXECUTOR)
-            .thenRunAsync(() -> performDeletionWithWait(start, end, currentContext, testStorage), EXECUTOR)
+        return CompletableFuture.runAsync(() -> performCreationWithWait(start, end, currentContext, testStorage), executorService)
+            .thenRunAsync(() -> performModificationWithWait(start, end, currentContext, testStorage, KAFKA_TOPIC_CONFIG_TO_MODIFY), executorService)
+            .thenRunAsync(() -> performDeletionWithWait(start, end, currentContext, testStorage), executorService)
             .exceptionally(ex -> {
                 LOGGER.error("Error processing batch from {} to {}: {}", start, end, ex.getMessage(), ex);
                 return null;
@@ -120,12 +120,12 @@ public class TopicOperatorPerformanceUtils {
      * @param currentContext    the current test context
      * @param testStorage       storage containing test information such as namespace, cluster, and topic names
      *
-     * <p>Note: The {@code ResourceManager.setTestContext(currentContext);} is needed because this method is invoked in a new thread.
+     * <p>Note: The {@code KubeResourceManager.get().setTestContext(currentContext);} is needed because this method is invoked in a new thread.
      * Therefore, if you do not set the context, you would end up with a NullPointerException (NPE) because a new thread does not hold
      * the state of the {@code ExtensionContext}, and so you need to set it.</p>
      */
     private static void performCreationWithWait(int start, int end, ExtensionContext currentContext, TestStorage testStorage) {
-        ResourceManager.setTestContext(currentContext);
+        KubeResourceManager.get().setTestContext(currentContext);
         LOGGER.info("Creating Kafka topics from index {} to {}", start, end);
         KafkaTopicScalabilityUtils.createTopicsViaK8s(testStorage.getNamespaceName(), testStorage.getClusterName(),
             testStorage.getTopicName(), start, end, 12, 3, 2);
@@ -142,12 +142,12 @@ public class TopicOperatorPerformanceUtils {
      * @param testStorage                storage containing test information such as namespace and topic names
      * @param kafkaTopicConfigToModify   configuration to modify in the Kafka topics
      *
-     * <p>Note: The {@code ResourceManager.setTestContext(currentContext);} is needed because this method is invoked in a new thread.
+     * <p>Note: The {@code KubeResourceManager.get().setTestContext(currentContext);} is needed because this method is invoked in a new thread.
      * Therefore, if you do not set the context, you would end up with a NullPointerException (NPE) because a new thread does not hold
      * the state of the {@code ExtensionContext}, and so you need to set it.</p>
      */
     private static void performModificationWithWait(int start, int end, ExtensionContext currentContext, TestStorage testStorage, Map<String, Object> kafkaTopicConfigToModify) {
-        ResourceManager.setTestContext(currentContext);
+        KubeResourceManager.get().setTestContext(currentContext);
         LOGGER.info("Modifying Kafka topics from index {} to {}", start, end);
         KafkaTopicScalabilityUtils.modifyBigAmountOfTopics(testStorage.getNamespaceName(), testStorage.getTopicName(),
             start, end, new KafkaTopicSpecBuilder().withConfig(kafkaTopicConfigToModify).build());
@@ -163,12 +163,12 @@ public class TopicOperatorPerformanceUtils {
      * @param currentContext the current test context
      * @param testStorage   storage containing test information such as namespace and topic names
      *
-     * <p>Note: The {@code ResourceManager.setTestContext(currentContext);} is needed because this method is invoked in a new thread.
+     * <p>Note: The {@code KubeResourceManager.get().setTestContext(currentContext);} is needed because this method is invoked in a new thread.
      * Therefore, if you do not set the context, you would end up with a NullPointerException (NPE) because a new thread does not hold
      * the state of the {@code ExtensionContext}, and so you need to set it.</p>
      */
     private static void performDeletionWithWait(int start, int end, ExtensionContext currentContext, TestStorage testStorage) {
-        ResourceManager.setTestContext(currentContext);
+        KubeResourceManager.get().setTestContext(currentContext);
         LOGGER.info("Deleting Kafka topics from index {} to {}", start, end);
         KafkaTopicUtils.deleteKafkaTopicsInRange(testStorage.getNamespaceName(), testStorage.getTopicName(), start, end);
         KafkaTopicUtils.waitForTopicWithPrefixDeletion(testStorage.getNamespaceName(), testStorage.getTopicName(), start, end);
@@ -202,14 +202,19 @@ public class TopicOperatorPerformanceUtils {
      * @return                      The total time taken to complete all topic lifecycles in milliseconds.
      */
     public static long processAllTopicsConcurrently(TestStorage testStorage, int numberOfTopics, int spareEvents, int warmUpTasksToProcess) {
+        if (executorService.isShutdown() || executorService.isTerminated()) {
+            executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            LOGGER.info("Reinitialized ExecutorService for new test run.");
+        }
+
         List<CompletableFuture<Void>> futures = new ArrayList<>();
-        ExtensionContext extensionContext = ResourceManager.getTestContext();
+        ExtensionContext extensionContext = KubeResourceManager.get().getTestContext();
 
         long startTime = System.nanoTime();
 
         for (int topicIndex = warmUpTasksToProcess; topicIndex < numberOfTopics + warmUpTasksToProcess; topicIndex++) {
             final int finalTopicIndex = topicIndex;
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> performFullLifecycle(finalTopicIndex, testStorage, extensionContext), EXECUTOR);
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> performFullLifecycle(finalTopicIndex, testStorage, extensionContext), executorService);
             futures.add(future);
         }
 
@@ -238,12 +243,14 @@ public class TopicOperatorPerformanceUtils {
     }
 
     public static void stopExecutor() {
-        try {
-            EXECUTOR.shutdown();
-            EXECUTOR.awaitTermination(5, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            if (!EXECUTOR.isTerminated()) {
-                EXECUTOR.shutdownNow();
+        if (!executorService.isShutdown()) {
+            try {
+                executorService.shutdown();
+                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
             }
         }
     }

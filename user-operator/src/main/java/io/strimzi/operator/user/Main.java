@@ -12,8 +12,8 @@ import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
 import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
-import io.micrometer.prometheus.PrometheusConfig;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.strimzi.api.kafka.model.user.KafkaUser;
 import io.strimzi.api.kafka.model.user.KafkaUserList;
 import io.strimzi.certs.OpenSslCertManager;
@@ -144,10 +144,13 @@ public class Main {
      * @return  An instance of the Admin API client
      */
     private static Admin createAdminClient(UserOperatorConfig config, SecretOperator secretOperator, AdminClientProvider adminClientProvider)    {
-        PemTrustSet pemTrustSet = new PemTrustSet(getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getClusterCaCertSecretName()));
+        Secret clusterCaCert = getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getClusterCaCertSecretName());
+        // When the cluster CA secret is not null (i.e. TLS is used), we create a PemTrustSet. Otherwise, we just pass null.
+        PemTrustSet pemTrustSet = clusterCaCert != null ? new PemTrustSet(clusterCaCert) : null;
+
         Secret uoKeyAndCert = getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getEuoKeySecretName());
         // When the UO secret is not null (i.e. mTLS is used), we create a PemAuthIdentity. Otherwise, we just pass null.
-        PemAuthIdentity pemAuthIdentity = uoKeyAndCert != null ? PemAuthIdentity.entityOperator(uoKeyAndCert) : null;
+        PemAuthIdentity pemAuthIdentity = uoKeyAndCert != null ? PemAuthIdentity.entityOperator(uoKeyAndCert, config.getEuoKeyName(), config.getEuoCertName()) : null;
 
         return adminClientProvider.createAdminClient(
                 config.getKafkaBootstrapServers(),

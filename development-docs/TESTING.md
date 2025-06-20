@@ -16,6 +16,8 @@ For more information about the build process, see [Dev guide document](DEV_GUIDE
 - [Running single test class](#running-single-test-class)
 - [Skip Teardown](#skip-teardown)
 - [Testing-farm](../systemtest/tmt/README.md)
+- [Running tests with custom images](#running-tests-with-custom-images)
+- [Performance testing](#performance-testing)
 
 <!-- /TOC -->
 
@@ -96,11 +98,11 @@ components and, if needed, change them from their default configuration using a 
 You can create resources anywhere you want. Our resource lifecycle implementation will handle insertion of the resource 
 on top of the stack and deletion at the end of the test method/class.
 Moreover, you should always use `Templates` classes for pre-defined resources. 
-For instance, when one want deploy Kafka cluster with tree nodes it can be simply done by following code:
+For instance, when one want deploy Kafka cluster with three nodes it can be simply done by following code:
 ```java
 final int numberOfKafkaBrokers = 3;
 
-resourceManager.createResourceWithWait(extensionContext, 
+KubeResourceManager.get().createResourceWithWait(extensionContext, 
     // using KafkaTemplate class for pre-defined values
     KafkaTemplates.kafka(
         clusterName,
@@ -108,7 +110,7 @@ resourceManager.createResourceWithWait(extensionContext,
     );
 ```
 
-`ResourceManager` has Map<String, Stack<ResourceItem>>, which means that for each test case, we have a brand-new stack 
+`ResourceManager` has `Map<String, Stack<ResourceItem>>`, which means that for each test case, we have a brand-new stack 
 that stores all resources needed for specific tests. An important aspect is also the `ExtensionContext.class` with which
 we can know which stack is associated with which test uniquely.
 
@@ -117,7 +119,7 @@ Example of setup shared resources in scope of the test suite:
 @BeforeAll
 void setUp(ExtensionContext extensionContext) {
     // create resources without wait to deploy them simultaneously
-    resourceManager.createResourceWithoutWait(extensionContext, // we do not wait for readiness and therefore deploy all resources asynchronously
+    KubeResourceManager.get().createResourceWithoutWait(extensionContext, // we do not wait for readiness and therefore deploy all resources asynchronously
     // kafka with cruise control and metrics
     KafkaTemplates.kafkaWithMetricsAndCruiseControlWithMetrics(...).build(),
     KafkaTemplates.kafkaWithMetrics(...).build(),
@@ -128,7 +130,7 @@ void setUp(ExtensionContext extensionContext) {
     );
     
     // sync resources (barier)
-    resourceManager.synchronizeResources(extensionContext);
+    KubeResourceManager.get().synchronizeResources(extensionContext);
 }
 ```
 
@@ -174,7 +176,7 @@ related to `myNewTestName` test.
 
 ## Adding brand-new test suite 
 
-When you need to create a new test suite, firstly, make sure that it has the suffix `ST` (i.e., KafkaST, ConnectBuilderST).
+When you need to create a new test suite, firstly, make sure that it has the suffix `ST` (i.e., `KafkaST`, `ConnectBuilderST`).
 
 ## Parallel execution of tests
 
@@ -200,7 +202,7 @@ mvn verify -pl systemtest -P all -Dit.test=ListenersST -Djunit.jupiter.execution
 
 Key aspects:
 1. [JUnit5 parallelism](https://junit.org/junit5/docs/snapshot/user-guide/#writing-tests-parallel-execution)
-2. **annotations** = overrides parallelism configuration in runtime phase (i.e., @IsolatedTest, @ParallelTest, @ParallelNamespaceTest).
+2. **annotations** = overrides parallelism configuration in runtime phase (i.e., `@IsolatedTest`, `@ParallelTest`, `@ParallelNamespaceTest`).
 3. **auxiliary classes** (i.e., `SuiteThreadController`, `TestSuiteNamespaceManager`)
 
 #### 1. JUnit5 parallelism
@@ -218,7 +220,7 @@ class spawns as many threads as we specify in the `JUnit-platform.properties`.
 
 #### 3. Auxiliary classes
 
--- **TestSuiteNamespaceManager** = provides complete management of namespaces for specific test suites.
+- **TestSuiteNamespaceManager** = provides complete management of namespaces for specific test suites.
     1. **@ParallelSuite** - such a test suite creates its namespace (f.e., for TracingST creates `tracing-st` namespace).
        This is needed because we must ensure that each parallel suite runs in a separate namespace and thus runs in isolation.
     2. **@ParallelNamespaceTest** = responsible for creating and deleting auxiliary namespaces for such test cases.
@@ -243,41 +245,42 @@ Standard errors don't have any problematic impact on cluster behaviour, and requ
 
 You need to use the `groups` system property to execute a group of system tests. For example, with the following values:
 
-`-Dgroups=integration` — to execute one test group
-`-Dgroups=acceptance,regression` — to execute many test groups
-`-Dgroups=all` — to run all test groups
+- `-Dgroups=integration` - to execute one test group
+- `-Dgroups=acceptance,regression` - to execute many test groups
+- `-Dgroups=all` - to run all test groups
 
 If `-Dgroups` system property isn't defined, all tests without an explicitly declared test group will be executed.
 The following table shows currently used tags:
 
-| Name               |                                      Description                                      |
-| :----------------: |:-------------------------------------------------------------------------------------:|
-| acceptance         | Acceptance tests, which guarantee that the basic functionality of Strimzi is working. |
-| regression         |                 Regression tests, which contains all non-flaky tests.                 |
-| upgrade            |                  Upgrade tests for specific versions of the Strimzi.                  |
-| smoke              |                                Execute all smoke tests                                |
-| flaky              |         Execute all flaky tests (tests, which are failing from time to time)          |
-| scalability        |                               Execute scalability tests                               |
-| componentscaling   |                            Execute component scaling tests                            |
-| specific           |           Specific tests, which cannot be easily added to other categories            |
-| nodeport           |               Execute tests which use external lister of type nodeport                |
-| loadbalancer       |             Execute tests which use external lister of type loadbalancer              |
-| networkpolicies    |                  Execute tests that use Kafka with Network Policies                   |
-| prometheus         |                        Execute tests for Kafka with Prometheus                        |
-| tracing            |                               Execute tests for Tracing                               |
-| helm               |                Execute tests that use Helm for deploy cluster operator                |
-| oauth              |                             Execute tests that use OAuth                              |
-| recovery           |                                Execute recovery tests                                 |
-| connectoroperator  |                   Execute tests that deploy KafkaConnector resource                   |
-| connect            |                    Execute tests that deploy KafkaConnect resource                    |
-| mirrormaker2       |                 Execute tests that deploy KafkaMirrorMaker2 resource                  |
-| conneccomponents   |  Execute tests that deploy KafkaConnect, KafkaMirrorMaker2, KafkaConnector resources  |
-| bridge             |                          Execute tests that use Kafka Bridge                          |
-| externalclients    |          Execute tests that use external (from code) Kafka clients in tests           |
-| olm                |                Execute tests that test examples from Strimzi manifests                |
-| metrics            |                         Execute tests where metrics are used                          |
-| cruisecontrol      |                   Execute tests that deploy CruiseControl resource                    |
-| rollingupdate      |                    Execute tests where is rolling update triggered                    |
+|       Name        |                                      Description                                      |
+|:-----------------:|:-------------------------------------------------------------------------------------:|
+|    acceptance     | Acceptance tests, which guarantee that the basic functionality of Strimzi is working. |
+|    regression     |                 Regression tests, which contains all non-flaky tests.                 |
+|      upgrade      |                  Upgrade tests for specific versions of the Strimzi.                  |
+|       smoke       |                                Execute all smoke tests                                |
+|       flaky       |         Execute all flaky tests (tests, which are failing from time to time)          |
+|    scalability    |                               Execute scalability tests                               |
+| componentscaling  |                            Execute component scaling tests                            |
+|     specific      |           Specific tests, which cannot be easily added to other categories            |
+|     nodeport      |               Execute tests which use external lister of type nodeport                |
+|   loadbalancer    |             Execute tests which use external lister of type loadbalancer              |
+|  networkpolicies  |                  Execute tests that use Kafka with Network Policies                   |
+|    prometheus     |                        Execute tests for Kafka with Prometheus                        |
+|      tracing      |                               Execute tests for Tracing                               |
+|       helm        |                Execute tests that use Helm for deploy cluster operator                |
+|       oauth       |                             Execute tests that use OAuth                              |
+|     recovery      |                                Execute recovery tests                                 |
+| connectoroperator |                   Execute tests that deploy KafkaConnector resource                   |
+|      connect      |                    Execute tests that deploy KafkaConnect resource                    |
+|   mirrormaker2    |                 Execute tests that deploy KafkaMirrorMaker2 resource                  |
+| conneccomponents  |  Execute tests that deploy KafkaConnect, KafkaMirrorMaker2, KafkaConnector resources  |
+|      bridge       |                          Execute tests that use Kafka Bridge                          |
+|  externalclients  |          Execute tests that use external (from code) Kafka clients in tests           |
+|        olm        |                Execute tests that test examples from Strimzi manifests                |
+|      metrics      |                         Execute tests where metrics are used                          |
+|   cruisecontrol   |                   Execute tests that deploy CruiseControl resource                    |
+|   rollingupdate   |                    Execute tests where is rolling update triggered                    |
+|    performance    |                               Execute performance tests                               |
 
 If your Kubernetes cluster doesn't support Network Policies or NodePort services, you can easily skip those tests with `-DexcludeGroups=networkpolicies,nodeport`.
 
@@ -297,7 +300,7 @@ Loading of system configuration has the following priority order:
 2. Variable defined in the configuration file
 3. Default value
 
-After every systemtest test run all env variables are automatically stored into $TEST_LOG_DIR/test-run.../config.yaml so each test run can be easily reproduced just by running
+After every systemtest test run all env variables are automatically stored into `$TEST_LOG_DIR/test-run.../config.yaml` so each test run can be easily reproduced just by running
 ```commandline
 ST_CONFIG_PATH="path/to/config/file/config.yaml" mvn verify ...
 ```
@@ -445,3 +448,131 @@ spec:
 ```
 
 Now you can efficiently run OLM tests.
+
+## Running tests with custom images
+
+Running STs with custom images for operator, Kafka, and other components is possible using few ways.
+
+### Bundle installation (using YAML files)
+
+In case that you want to run tests with Bundle installation type (which is the default), you can do two things:
+
+1. Update the `packaging/install/cluster-operator/060-Deployment-strimzi-cluster-operator.yaml` file for everything related to the Cluster Operator.
+   In case that you have also custom image for DrainCleaner, you should update `packaging/install/drain-cleaner/kubernetes/060-Deployment.yaml`
+   (currently we are picking everything from the `kubernetes` part, even if you are running on OCP for example). In both you can update each of the images you
+   have built. This is useful in case that you built just operator image, you can change only the references of operator image (and you can again pick where you need it to be changed).
+2. Set `DOCKER_REGISTRY`, `DOCKER_ORG` and `DOCKER_TAG` which will change all the images inside `packaging/install/cluster-operator/060-Deployment-strimzi-cluster-operator.yaml`
+   to reflect your configuration. This is useful for example in pipelines or if you are building everything. Keep in mind that Bridge image will be kept for the latest released Bridge
+   available in our official Quay.io Strimzi repository. These envs are not changing the DrainCleaner file! That's because, again, you are not building DrainCleaner image in this repository.
+
+**IMPORTANT**: In case that you want to use your own custom Bridge image, you need to configure the `BRIDGE_IMAGE` environment variable!
+Changes to `packaging/install/cluster-operator/060-Deployment-strimzi-cluster-operator.yaml` will not be reflected.
+That's because currently, the default value of `BRIDGE_IMAGE` is `latest-released`, preventing the rewrite of the image by the `DOCKER_*` environment variables
+and using the officially released Bridge image in case that this environment variable is not specified.
+
+### Helm installation
+
+Similarly to Bundle installation type, you can do two things:
+
+1. Update the `packaging/helm-charts/helm3/strimzi-kafka-operator/values.yaml` where you can configure each image separately.
+   In STs we are configuring `defaultImageRegistry`, `defaultImageRepository`, and `defaultImageTag` to point on official images from Strimzi.
+   So the values are `quay.io`, `strimzi`, `latest`. **Do not update these fields, as they will be overwritten to these defaults.**
+2. Set `DOCKER_REGISTRY`, `DOCKER_ORG` and `DOCKER_TAG` which will change `defaultImageRegistry`, `defaultImageRepository`, and `defaultImageTag`.
+   Again, this applies to **all of the images** but the Bridge image, which defaults to the official image supported by Strimzi.
+
+**IMPORTANT**: Same as for Bundle installation, in case that you want to use custom Bridge image, please use `BRIDGE_IMAGE` environment variable.
+Changes to the `values.yaml` will not be reflected and will be overwritten by the official Bridge image supported by Strimzi.
+
+### OLM installation
+
+For custom images inside OLM and running the tests with OLM installation please refer to [Testing Cluster Operator deployment via OLM section](#testing-cluster-operator-deployment-via-olm)
+and to environment variables with `OLM_` prefix.
+
+## Performance Testing
+
+### Overview 
+
+The performance tests in the Strimzi system test suite are categorized into two primary sets (i.e., capacity and scalability).
+All performance reports are stored in the `systemtest/target/performance` folder, which contains detailed 
+setup configurations and collected metrics, including JVM, memory, and CPU utilization (if enabled).
+Moreover, each test generates a summary report table. 
+Below is an example for the `scalabilityUseCase`.
+```
+Use Case: scalabilityUseCase
++------------+--------------------+-------------------------+----------------------+----------------------+---------------------------+------------------+-----------------------------------+
+| Experiment | IN: MAX QUEUE SIZE | IN: MAX BATCH SIZE (ms) | IN: NUMBER OF TOPICS | IN: NUMBER OF EVENTS | IN: MAX BATCH LINGER (ms) | IN: PROCESS TYPE | OUT: Reconciliation interval (ms) |
+| 1          | 2147483647         | 100                     | 25                   | 75                   | 100                       | TOPIC-CONCURRENT | 9156                              |
+| 2          | 2147483647         | 100                     | 2                    | 8                    | 100                       | TOPIC-CONCURRENT | 6147                              |
+| 3          | 2147483647         | 100                     | 250                  | 750                  | 100                       | TOPIC-CONCURRENT | 24730                             |
+| 4          | 2147483647         | 100                     | 125                  | 375                  | 100                       | TOPIC-CONCURRENT | 26827                             |
++------------+--------------------+-------------------------+----------------------+----------------------+---------------------------+------------------+-----------------------------------+
+```
+- **IN:** parameters represent the input configuration settings used in the test, such as queue size, batch size, and the number of topics or events.
+- **OUT:** parameters represent the resulting performance metrics, such as the reconciliation interval time in milliseconds.
+
+### Performance Test Categories
+
+#### 1. Capacity Tests
+
+Capacity tests focus on measuring the system's ability to sustain increasing workloads. 
+These tests provide insights into resource utilization and operational limits.
+
+**Topic Operator Capacity Test**
+- Measures the impact of different maxBatchSize and maxBatchLingerMs values on system throughput and responsiveness. 
+- Evaluates Kafka topic creation, modification, and deletion performance under different batching strategies.
+- Reports include details on:
+  - Maximum batch size
+  - Maximum batch linger time (ms)
+  - Number of successfully created Kafka topics
+  - Metrics history from topic operator components
+
+**User Operator Capacity Test**
+
+Evaluates user operator performance with different configurations, including:
+- Controller thread pool size
+- Cache refresh interval (ms)
+- Batch queue size
+- Maximum batch block size and time (ms)
+- User operations thread pool size
+- Reports include:
+  - Worker queue size
+  - Successful Kafka users created
+  - Detailed system metrics and history
+
+What is worth mentioning is that these capacity tests take on average **23 minutes** for the Topic Operator and **5 hours 22 minutes** for the User Operator, depending on your HW specs.
+
+#### 2. Scalability Tests
+
+Scalability tests assess how well Strimzi scales as the workload increases and help identify potential bottlenecks in the system.
+
+**Topic Operator Scalability Test**
+
+- Tests how the topic operator processes events concurrently when handling different numbers of Kafka topics.
+- Uses batch processing to simulate real-world Kafka topic operations at scale.
+- Measures reconciliation time and resource utilization for different batch sizes.
+- Reports include:
+  - Maximum queue size
+  - Number of topics processed
+  - Number of events handled per reconciliation cycle
+
+This test case runs at most **5 minutes**. 
+
+### Triggering Performance Tests
+
+Performance tests can be triggered using either Testing Farm or Jenkins. 
+One can also run them locally as our standard system tests using some IDE or directly by maven.
+
+#### Testing Farm
+Currently, there are two possible triggers:
+```
+/packit test --labels performance
+/packit test --labels user-capacity
+/packit test --labels topic-capacity
+```
+
+#### Jenkins
+
+To run performance tests in Jenkins, execute them as standard system tests e.g., for `TopicOperatorScalabilityPerformance`:
+```
+@strimzi-ci run tests --profile=performance --testcase=TopicOperatorScalabilityPerformance`
+```

@@ -48,7 +48,6 @@ import io.strimzi.operator.cluster.model.logging.LoggingModel;
 import io.strimzi.operator.cluster.model.logging.SupportsLogging;
 import io.strimzi.operator.cluster.model.securityprofiles.ContainerSecurityProviderContextImpl;
 import io.strimzi.operator.cluster.model.securityprofiles.PodSecurityProviderContextImpl;
-import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.InvalidResourceException;
@@ -89,6 +88,7 @@ public class KafkaBridgeCluster extends AbstractModel implements SupportsLogging
     protected static final String ENV_VAR_KAFKA_BRIDGE_METRICS_ENABLED = "KAFKA_BRIDGE_METRICS_ENABLED";
     protected static final String ENV_VAR_KAFKA_BRIDGE_TRUSTED_CERTS = "KAFKA_BRIDGE_TRUSTED_CERTS";
     protected static final String OAUTH_TLS_CERTS_BASE_VOLUME_MOUNT = "/opt/strimzi/oauth-certs/";
+    protected static final String OAUTH_SECRETS_BASE_VOLUME_MOUNT = "/opt/strimzi/oauth/";
 
     protected static final String CO_ENV_VAR_CUSTOM_BRIDGE_POD_LABELS = "STRIMZI_CUSTOM_KAFKA_BRIDGE_LABELS";
     protected static final String INIT_VOLUME_MOUNT = "/opt/strimzi/init";
@@ -97,12 +97,6 @@ public class KafkaBridgeCluster extends AbstractModel implements SupportsLogging
      * Key under which the bridge configuration is stored in ConfigMap
      */
     public static final String BRIDGE_CONFIGURATION_FILENAME = "application.properties";
-
-    /**
-     * Annotation for rolling the bridge whenever the configuration within the application.properties file is changed.
-     * When the configuration hash annotation change is detected, we force a pod restart.
-     */
-    public static final String ANNO_STRIMZI_IO_CONFIGURATION_HASH = Annotations.STRIMZI_DOMAIN + "configuration-hash";
 
     private int replicas;
     private ClientTls tls;
@@ -291,7 +285,7 @@ public class KafkaBridgeCluster extends AbstractModel implements SupportsLogging
             volumeList.add(VolumeUtils.createEmptyDirVolume(INIT_VOLUME_NAME, "1Mi", "Memory"));
         }
 
-        AuthenticationUtils.configureClientAuthenticationVolumes(authentication, volumeList, "oauth-certs", isOpenShift);
+        AuthenticationUtils.configurePKCS12ClientAuthenticationVolumes(authentication, volumeList, "oauth-certs", isOpenShift, "", true);
 
         TemplateUtils.addAdditionalVolumes(templatePod, volumeList);
 
@@ -312,7 +306,7 @@ public class KafkaBridgeCluster extends AbstractModel implements SupportsLogging
             volumeMountList.add(VolumeUtils.createVolumeMount(INIT_VOLUME_NAME, INIT_VOLUME_MOUNT));
         }
 
-        AuthenticationUtils.configureClientAuthenticationVolumeMounts(authentication, volumeMountList, TLS_CERTS_BASE_VOLUME_MOUNT, PASSWORD_VOLUME_MOUNT, OAUTH_TLS_CERTS_BASE_VOLUME_MOUNT, "oauth-certs");
+        AuthenticationUtils.configurePKCS12ClientAuthenticationVolumeMounts(authentication, volumeMountList, TLS_CERTS_BASE_VOLUME_MOUNT, PASSWORD_VOLUME_MOUNT, OAUTH_TLS_CERTS_BASE_VOLUME_MOUNT, "oauth-certs", "", true, OAUTH_SECRETS_BASE_VOLUME_MOUNT);
 
         TemplateUtils.addAdditionalVolumeMounts(volumeMountList, templateContainer);
 
@@ -410,6 +404,7 @@ public class KafkaBridgeCluster extends AbstractModel implements SupportsLogging
             varList.add(ContainerUtils.createEnvVar(ENV_VAR_KAFKA_BRIDGE_TRUSTED_CERTS, CertUtils.trustedCertsEnvVar(tls.getTrustedCertificates())));
         }
 
+        // Client authentication env var is needed to generate oauth truststore certificates in PKCS12 format in container script
         AuthenticationUtils.configureClientAuthenticationEnvVars(authentication, varList, name -> ENV_VAR_PREFIX + name);
 
         // Add shared environment variables used for all containers

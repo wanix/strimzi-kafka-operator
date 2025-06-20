@@ -124,6 +124,7 @@ public interface TestConstants {
      */
     String APP_POD_LABEL = "app";
     String APP_KUBERNETES_INSTANCE_LABEL = "app.kubernetes.io/instance";
+    String APP_KUBERNETES_NAME_LABEL = "app.kubernetes.io/name";
     String APP_CONTROLLER_LABEL = "controlled-by";
 
     /**
@@ -166,13 +167,13 @@ public interface TestConstants {
     String NETWORK_POLICY = "NetworkPolicy";
     String JOB = "Job";
     String VALIDATION_WEBHOOK_CONFIG = "ValidatingWebhookConfiguration";
-    String REPLICA_SET = "ReplicaSet";
     String SUBSCRIPTION = "Subscription";
     String OPERATOR_GROUP = "OperatorGroup";
     String BUILD_CONFIG = "BuildConfig";
     String IMAGE_STREAM = "ImageStream";
     String INSTALL_PLAN = "InstallPlan";
     String CLUSTER_SERVICE_VERSION = "ClusterServiceVersion";
+    String CERTIFICATE = "Certificate";
 
     /**
      * KafkaBridge JSON encoding with JSON embedded format
@@ -292,6 +293,7 @@ public interface TestConstants {
     String MIXED_SELECTOR_KEY = "MIXED_SELECTOR";
     String KAFKA_CONNECT_SELECTOR_KEY = "KAFKA_CONNECT_SELECTOR";
     String MM2_SELECTOR_KEY = "MM2_SELECTOR";
+    String BRIDGE_SELECTOR_KEY = "BRIDGE_SELECTOR";
     String MESSAGE_COUNT_KEY = "MESSAGE_COUNT";
     String CONTINUOUS_MESSAGE_COUNT_KEY = "CONTINUOUS_MESSAGE_COUNT";
     String TEST_EXECUTION_START_TIME_KEY = "TEST_EXECUTION_START_TIME";
@@ -333,4 +335,20 @@ public interface TestConstants {
     String MIXED_ROLE_PREFIX = "m-";
     String BROKER_ROLE_PREFIX = "b-";
     String CONTROLLER_ROLE_PREFIX = "c-";
+
+    /**
+     * Container runtime constants
+     */
+    String DOCKER = "docker";
+    String PODMAN = "podman";
+
+    /**
+     * OLM related constants
+     */
+    String OLM_OPERATOR_GROUP_NAME = "strimzi-group";
+
+    /**
+     * Label for Kubernetes worker nodes
+     */
+    String WORKER_NODE_LABEL = "node-role.kubernetes.io/worker";
 }

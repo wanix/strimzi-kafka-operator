@@ -106,9 +106,10 @@ the documentation for more details.
 | `defaultImageRegistry`                      | Default image registry for all the images                                       | `quay.io`                    |
 | `defaultImageRepository`                    | Default image registry for all the images                                       | `strimzi`                    |
 | `defaultImageTag`                           | Default image tag for all the images except Kafka Bridge                        | `latest`                     |
+| `deploymentAnnotations`                     | Annotations for the operator deployment                                         | `{}`                         |
 | `image.registry`                            | Override default Cluster Operator image registry                                | `nil`                        |
 | `image.repository`                          | Override default Cluster Operator image repository                              | `nil`                        |
-| `image.name`                                | Cluster Operator image name                                                     | `cluster-operator`           |
+| `image.name`                                | Cluster Operator image name                                                     | `operator`                   |
 | `image.tag`                                 | Override default Cluster Operator image tag                                     | `nil`                        |
 | `image.digest`                              | Override Cluster Operator image tag with digest                                 | `nil`                        |
 | `image.imagePullPolicy`                     | Image pull policy for all pods deployed by Cluster Operator                     | `IfNotPresent`               |
@@ -126,6 +127,7 @@ the documentation for more details.
 | `podDisruptionBudget.enabled`               | Whether to enable the podDisruptionBudget feature                               | `false`                      |
 | `podDisruptionBudget.minAvailable`          | Default value for how many pods must be running in a cluster                    | `1`                          |
 | `podDisruptionBudget.maxUnavailable`        | Default value for how many pods can be down                                     | `nil`                        |
+| `podDisruptionBudget.unhealthyPodEvictionPolicy` | Default value for how to respond to unheathly pods                         | `IfHealthyBudget`                |
 | `extraEnvs`                                 | Extra environment variables for the Cluster operator container                  | `[]`                         |
 | `kafka.image.registry`                      | Override default Kafka image registry                                           | `nil`                        |
 | `kafka.image.repository`                    | Override default Kafka image repository                                         | `nil`                        |
@@ -163,7 +165,7 @@ the documentation for more details.
 | `kafkaBridge.image.registry`                | Override default Kafka Bridge image registry                                    | `quay.io`                    |
 | `kafkaBridge.image.repository`              | Override default Kafka Bridge image repository                                  | `strimzi`                    |
 | `kafkaBridge.image.name`                    | Kafka Bridge image name                                                         | `kafka-bridge`               |
-| `kafkaBridge.image.tag`                     | Override default Kafka Bridge image tag                                         | `latest`                     |
+| `kafkaBridge.image.tag`                     | Override default Kafka Bridge image tag                                         | `0.32.0`                     |
 | `kafkaBridge.image.digest`                  | Override Kafka Bridge image tag with digest                                     | `nil`                        |
 | `kafkaExporter.image.registry`              | Override default Kafka Exporter image registry                                  | `nil`                        |
 | `kafkaExporter.image.repository`            | Override default Kafka Exporter image repository                                | `nil`                        |
@@ -209,7 +211,7 @@ the documentation for more details.
 | `mavenBuilder.image.digest`                 | Override Maven Builder image tag with digest                                    | `nil`                        |
 | `logConfiguration`                          | Override default `log4j.properties` content                                     | `nil`                        |
 | `logLevel`                                  | Override default logging level                                                  | `INFO`                       |
-| `dashboards.enable`                         | Generate configmaps containing the dashboards                                   | `false`                      |
+| `dashboards.enabled`                        | Generate configmaps containing the dashboards                                   | `false`                      |
 | `dashboards.label`                          | How should the dashboards be labeled for the sidecar                            | `grafana_dashboard`          |
 | `dashboards.labelValue`                     | What should the dashboards label value be for the sidecar                       | `"1"`                        |
 | `dashboards.extraLabels`                    | Any additional labels you would like on the dashboards                          | `{}`                         |

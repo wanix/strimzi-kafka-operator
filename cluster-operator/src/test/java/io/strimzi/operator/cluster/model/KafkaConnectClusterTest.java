@@ -65,15 +65,17 @@ import io.strimzi.api.kafka.model.connect.ExternalConfigurationEnv;
 import io.strimzi.api.kafka.model.connect.ExternalConfigurationEnvBuilder;
 import io.strimzi.api.kafka.model.connect.ExternalConfigurationVolumeSource;
 import io.strimzi.api.kafka.model.connect.ExternalConfigurationVolumeSourceBuilder;
+import io.strimzi.api.kafka.model.connect.ImageArtifactBuilder;
 import io.strimzi.api.kafka.model.connect.KafkaConnect;
 import io.strimzi.api.kafka.model.connect.KafkaConnectBuilder;
 import io.strimzi.api.kafka.model.connect.KafkaConnectResources;
+import io.strimzi.api.kafka.model.connect.MountedPluginBuilder;
 import io.strimzi.api.kafka.model.podset.StrimziPodSet;
-import io.strimzi.kafka.oauth.client.ClientConfig;
-import io.strimzi.kafka.oauth.server.ServerConfig;
 import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.ResourceUtils;
+import io.strimzi.operator.cluster.model.logging.LoggingModel;
+import io.strimzi.operator.cluster.model.metrics.JmxPrometheusExporterModel;
 import io.strimzi.operator.cluster.model.metrics.MetricsModel;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.InvalidResourceException;
@@ -168,7 +170,7 @@ public class KafkaConnectClusterTest {
     @ParallelTest
     public void testConnectConfigMap() {
         ConfigMap configMap = kc.generateConnectConfigMap(new MetricsAndLogging(metricsCM, null));
-        assertThat(configMap.getData().get(MetricsModel.CONFIG_MAP_KEY), is(metricsCmJson));
+        assertThat(configMap.getData().get(JmxPrometheusExporterModel.CONFIG_MAP_KEY), is(metricsCmJson));
 
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("bootstrap.servers=" + bootstrapServers));
@@ -346,24 +348,10 @@ public class KafkaConnectClusterTest {
         // Check config map
         ConfigMap configMap = kc.generateConnectConfigMap(new MetricsAndLogging(metricsCM, null));
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
-        assertThat(connectConfigurations, containsString("ssl.truststore.location=/tmp/kafka/cluster.truststore.p12"));
-        assertThat(connectConfigurations, containsString("ssl.truststore.password=${strimzienv:CERTS_STORE_PASSWORD}"));
-        assertThat(connectConfigurations, containsString("ssl.truststore.type=PKCS12"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.certificates=${strimzisecrets:namespace/" + KafkaConnectResources.internalTlsTrustedCertsSecretName(clusterName) + ":*.crt}"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.type=PEM"));
         assertThat(connectConfigurations, containsString("security.protocol=SSL"));
         assertThat(connectConfigurations, not(containsString("ssl.keystore.")));
-
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            assertThat(pod.getSpec().getVolumes().get(2).getName(), is("my-secret"));
-            assertThat(pod.getSpec().getVolumes().get(3).getName(), is("my-another-secret"));
-
-            List<Container> containers = pod.getSpec().getContainers();
-            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.TLS_CERTS_BASE_VOLUME_MOUNT + "my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getMountPath(), is(KafkaConnectCluster.TLS_CERTS_BASE_VOLUME_MOUNT + "my-another-secret"));
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)).get(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_TRUSTED_CERTS),
-                    is("my-secret/cert.crt;my-secret/new-cert.crt;my-another-secret/another-cert.crt"));
-        });
     }
 
     @ParallelTest
@@ -389,24 +377,11 @@ public class KafkaConnectClusterTest {
         // Check config map
         ConfigMap configMap = kc.generateConnectConfigMap(new MetricsAndLogging(metricsCM, null));
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
-        assertThat(connectConfigurations, containsString("ssl.keystore.location=/tmp/kafka/cluster.keystore.p12"));
-        assertThat(connectConfigurations, containsString("ssl.keystore.password=${strimzienv:CERTS_STORE_PASSWORD}"));
-        assertThat(connectConfigurations, containsString("ssl.keystore.type=PKCS12"));
+        assertThat(connectConfigurations, containsString("ssl.keystore.certificate.chain=${strimzisecrets:namespace/user-secret:user.crt}"));
+        assertThat(connectConfigurations, containsString("ssl.keystore.type=PEM"));
         assertThat(connectConfigurations, containsString("security.protocol=SSL"));
-        assertThat(connectConfigurations, containsString("ssl.truststore."));
-
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            assertThat(pod.getSpec().getVolumes().get(3).getName(), is("user-secret"));
-
-            List<Container> containers = pod.getSpec().getContainers();
-
-            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.TLS_CERTS_BASE_VOLUME_MOUNT + "my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getMountPath(), is(KafkaConnectCluster.TLS_CERTS_BASE_VOLUME_MOUNT + "user-secret"));
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)).get(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_TLS_AUTH_CERT), is("user-secret/user.crt"));
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)).get(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_TLS_AUTH_KEY), is("user-secret/user.key"));
-        });
+        assertThat(connectConfigurations, containsString("ssl.truststore.certificates=${strimzisecrets:namespace/" + KafkaConnectResources.internalTlsTrustedCertsSecretName(clusterName) + ":*.crt}"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.type=PEM"));
     }
 
     @ParallelTest
@@ -459,7 +434,7 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("sasl.mechanism=SCRAM-SHA-512"));
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=${strimzienv:KAFKA_CONNECT_SASL_USERNAME} password=${strimzidir:/opt/kafka/connect-password/user1-secret:password};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=\"user1\" password=\"${strimzidir:/opt/kafka/connect-password/user1-secret:password}\";"));
 
         // Check PodSet
         StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
@@ -468,7 +443,6 @@ public class KafkaConnectClusterTest {
 
             List<Container> containers = pod.getSpec().getContainers();
             assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "user1-secret"));
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)).get(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_SASL_USERNAME), is("user1"));
         });
     }
 
@@ -501,8 +475,9 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("sasl.mechanism=SCRAM-SHA-512"));
         assertThat(connectConfigurations, containsString("security.protocol=SASL_SSL"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=${strimzienv:KAFKA_CONNECT_SASL_USERNAME} password=${strimzidir:/opt/kafka/connect-password/my-secret:user1.password};"));
-        assertThat(connectConfigurations, containsString("ssl.truststore."));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=\"user1\" password=\"${strimzidir:/opt/kafka/connect-password/my-secret:user1.password}\";"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.certificates=${strimzisecrets:namespace/" + KafkaConnectResources.internalTlsTrustedCertsSecretName(clusterName) + ":*.crt}"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.type=PEM"));
 
         // Check PodSet
         StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
@@ -514,17 +489,13 @@ public class KafkaConnectClusterTest {
 
             List<Container> containers = pod.getSpec().getContainers();
 
-            assertThat(containers.get(0).getVolumeMounts().size(), is(4));
+            assertThat(containers.get(0).getVolumeMounts().size(), is(3));
             assertThat(containers.get(0).getVolumeMounts().get(0).getName(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
             assertThat(containers.get(0).getVolumeMounts().get(0).getMountPath(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_MOUNT_PATH));
             assertThat(containers.get(0).getVolumeMounts().get(1).getName(), is("kafka-connect-configurations"));
             assertThat(containers.get(0).getVolumeMounts().get(1).getMountPath(), is("/opt/kafka/custom-config/"));
             assertThat(containers.get(0).getVolumeMounts().get(2).getName(), is("my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.TLS_CERTS_BASE_VOLUME_MOUNT + "my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getName(), is("my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "my-secret"));
-
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)), hasEntry(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_SASL_USERNAME, "user1"));
+            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "my-secret"));
         });
     }
 
@@ -549,7 +520,7 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("sasl.mechanism=SCRAM-SHA-256"));
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAIN"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=${strimzienv:KAFKA_CONNECT_SASL_USERNAME} password=${strimzidir:/opt/kafka/connect-password/user1-secret:password}"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=\"user1\" password=\"${strimzidir:/opt/kafka/connect-password/user1-secret:password}\""));
         assertThat(connectConfigurations, not(containsString("ssl.truststore.")));
 
         // Check PodSet
@@ -559,7 +530,6 @@ public class KafkaConnectClusterTest {
 
             List<Container> containers = pod.getSpec().getContainers();
             assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "user1-secret"));
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)).get(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_SASL_USERNAME), is("user1"));
         });
     }
 
@@ -592,8 +562,9 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("sasl.mechanism=SCRAM-SHA-256"));
         assertThat(connectConfigurations, containsString("security.protocol=SASL_SSL"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=${strimzienv:KAFKA_CONNECT_SASL_USERNAME} password=${strimzidir:/opt/kafka/connect-password/my-secret:user1.password};"));
-        assertThat(connectConfigurations, containsString("ssl.truststore."));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=\"user1\" password=\"${strimzidir:/opt/kafka/connect-password/my-secret:user1.password}\";"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.certificates=${strimzisecrets:namespace/" + KafkaConnectResources.internalTlsTrustedCertsSecretName(clusterName) + ":*.crt}"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.type=PEM"));
 
         // Check PodSet
         StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
@@ -605,17 +576,13 @@ public class KafkaConnectClusterTest {
 
             List<Container> containers = pod.getSpec().getContainers();
 
-            assertThat(containers.get(0).getVolumeMounts().size(), is(4));
+            assertThat(containers.get(0).getVolumeMounts().size(), is(3));
             assertThat(containers.get(0).getVolumeMounts().get(0).getName(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
             assertThat(containers.get(0).getVolumeMounts().get(0).getMountPath(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_MOUNT_PATH));
             assertThat(containers.get(0).getVolumeMounts().get(1).getName(), is("kafka-connect-configurations"));
             assertThat(containers.get(0).getVolumeMounts().get(1).getMountPath(), is("/opt/kafka/custom-config/"));
             assertThat(containers.get(0).getVolumeMounts().get(2).getName(), is("my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.TLS_CERTS_BASE_VOLUME_MOUNT + "my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getName(), is("my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "my-secret"));
-
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)), hasEntry(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_SASL_USERNAME, "user1"));
+            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "my-secret"));
         });
     }
 
@@ -640,7 +607,7 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=PLAIN"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=${strimzienv:KAFKA_CONNECT_SASL_USERNAME} password=${strimzidir:/opt/kafka/connect-password/user1-secret:password};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"user1\" password=\"${strimzidir:/opt/kafka/connect-password/user1-secret:password}\";"));
         assertThat(connectConfigurations, not(containsString("ssl.truststore.")));
 
         // Check PodSet
@@ -650,7 +617,6 @@ public class KafkaConnectClusterTest {
 
             List<Container> containers = pod.getSpec().getContainers();
             assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "user1-secret"));
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)).get(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_SASL_USERNAME), is("user1"));
         });
     }
 
@@ -683,8 +649,9 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_SSL"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=PLAIN"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=${strimzienv:KAFKA_CONNECT_SASL_USERNAME} password=${strimzidir:/opt/kafka/connect-password/my-secret:user1.password};"));
-        assertThat(connectConfigurations, containsString("ssl.truststore."));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"user1\" password=\"${strimzidir:/opt/kafka/connect-password/my-secret:user1.password}\";"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.certificates=${strimzisecrets:namespace/" + KafkaConnectResources.internalTlsTrustedCertsSecretName(clusterName) + ":*.crt}"));
+        assertThat(connectConfigurations, containsString("ssl.truststore.type=PEM"));
 
         // Check PodSet
         StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
@@ -696,17 +663,13 @@ public class KafkaConnectClusterTest {
 
             List<Container> containers = pod.getSpec().getContainers();
 
-            assertThat(containers.get(0).getVolumeMounts().size(), is(4));
+            assertThat(containers.get(0).getVolumeMounts().size(), is(3));
             assertThat(containers.get(0).getVolumeMounts().get(0).getName(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
             assertThat(containers.get(0).getVolumeMounts().get(0).getMountPath(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_MOUNT_PATH));
             assertThat(containers.get(0).getVolumeMounts().get(1).getName(), is("kafka-connect-configurations"));
             assertThat(containers.get(0).getVolumeMounts().get(1).getMountPath(), is("/opt/kafka/custom-config/"));
             assertThat(containers.get(0).getVolumeMounts().get(2).getName(), is("my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.TLS_CERTS_BASE_VOLUME_MOUNT + "my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getName(), is("my-secret"));
-            assertThat(containers.get(0).getVolumeMounts().get(3).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "my-secret"));
-
-            assertThat(io.strimzi.operator.cluster.TestUtils.containerEnvVars(containers.get(0)), hasEntry(KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_SASL_USERNAME, "user1"));
+            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is(KafkaConnectCluster.PASSWORD_VOLUME_MOUNT + "my-secret"));
         });
     }
 
@@ -816,7 +779,7 @@ public class KafkaConnectClusterTest {
                 new PodDNSConfigOptionBuilder()
                         .withName("ndots")
                         .withValue("2")
-                        .build(), 
+                        .build(),
                 new PodDNSConfigOptionBuilder()
                         .withName("edns0")
                         .build()
@@ -829,46 +792,46 @@ public class KafkaConnectClusterTest {
                 .withWhenUnsatisfiable("ScheduleAnyway")
                 .withLabelSelector(new LabelSelectorBuilder().withMatchLabels(singletonMap("label", "value")).build())
                 .build();
-        
+
         ConfigMapVolumeSource configMap = new ConfigMapVolumeSourceBuilder()
                 .withName("configMap1")
                 .build();
-        
+
         SecretVolumeSource secret = new SecretVolumeSourceBuilder()
                 .withSecretName("secret1")
                 .build();
-        
+
         EmptyDirVolumeSource emptyDir = new EmptyDirVolumeSourceBuilder()
                 .withMedium("Memory")
                 .build();
-        
+
         AdditionalVolume additionalVolumeConfigMap = new AdditionalVolumeBuilder()
                 .withName("config-map-volume-name")
                 .withConfigMap(configMap)
                 .build();
-        
+
         AdditionalVolume additionalVolumeSecret = new AdditionalVolumeBuilder()
                 .withName("secret-volume-name")
                 .withSecret(secret)
                 .build();
-        
+
         AdditionalVolume additionalVolumeEmptyDir = new AdditionalVolumeBuilder()
                 .withName("empty-dir-volume-name")
                 .withEmptyDir(emptyDir)
                 .build();
-        
+
         VolumeMount additionalVolumeMountConfigMap = new VolumeMountBuilder()
                 .withName("config-map-volume-name")
                 .withMountPath("/mnt/config")
                 .withSubPath("def")
                 .build();
-        
+
         VolumeMount additionalVolumeMountSecret = new VolumeMountBuilder()
                 .withName("secret-volume-name")
                 .withMountPath("/mnt/secret")
                 .withSubPath("abc")
                 .build();
-        
+
         VolumeMount additionalVolumeMountEmptyDir = new VolumeMountBuilder()
                 .withName("empty-dir-volume-name")
                 .withMountPath("/mnt/empty-dir")
@@ -1622,54 +1585,6 @@ public class KafkaConnectClusterTest {
     }
 
     @ParallelTest
-    public void testKafkaContainerEnvVarsConflict() {
-        ContainerEnvVar envVar1 = new ContainerEnvVar();
-        String testEnvOneKey = KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_TLS_AUTH_KEY;
-        String testEnvOneValue = "test user cert";
-        envVar1.setName(testEnvOneKey);
-        envVar1.setValue(testEnvOneValue);
-
-        ContainerEnvVar envVar2 = new ContainerEnvVar();
-        String testEnvTwoKey = KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_TRUSTED_CERTS;
-        String testEnvTwoValue = "test trusted cert";
-        envVar2.setName(testEnvTwoKey);
-        envVar2.setValue(testEnvTwoValue);
-
-        List<ContainerEnvVar> testEnvs = new ArrayList<>();
-        testEnvs.add(envVar1);
-        testEnvs.add(envVar2);
-        ContainerTemplate kafkaConnectContainer = new ContainerTemplate();
-        kafkaConnectContainer.setEnv(testEnvs);
-
-        KafkaConnect resource = new KafkaConnectBuilder(this.resource)
-                .editSpec()
-                    .withNewTls()
-                        .addToTrustedCertificates(new CertSecretSourceBuilder().withSecretName("my-secret").withCertificate("cert.crt").build())
-                    .endTls()
-                    .withAuthentication(
-                            new KafkaClientAuthenticationTlsBuilder()
-                                    .withNewCertificateAndKey()
-                                    .withSecretName("user-secret")
-                                    .withCertificate("user.crt")
-                                    .withKey("user.key")
-                                    .endCertificateAndKey()
-                                    .build())
-                    .withNewTemplate()
-                        .withConnectContainer(kafkaConnectContainer)
-                    .endTemplate()
-                .endSpec()
-                .build();
-
-        List<EnvVar> kafkaEnvVars = KafkaConnectCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, resource, VERSIONS, SHARED_ENV_PROVIDER).getEnvVars();
-        assertThat("Failed to prevent over writing existing container environment variable: " + testEnvOneKey,
-                kafkaEnvVars.stream().filter(env -> testEnvOneKey.equals(env.getName()))
-                        .map(EnvVar::getValue).findFirst().orElse("").equals(testEnvOneValue), is(false));
-        assertThat("Failed to prevent over writing existing container environment variable: " + testEnvTwoKey,
-                kafkaEnvVars.stream().filter(env -> testEnvTwoKey.equals(env.getName()))
-                        .map(EnvVar::getValue).findFirst().orElse("").equals(testEnvTwoValue), is(false));
-    }
-
-    @ParallelTest
     public void testKafkaConnectContainerSecurityContext() {
 
         SecurityContext securityContext = new SecurityContextBuilder()
@@ -1751,17 +1666,9 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=OAUTHBEARER"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required ${strimzienv:KAFKA_CONNECT_OAUTH_CONFIG} oauth.access.token=${strimzienv:KAFKA_CONNECT_OAUTH_ACCESS_TOKEN};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required oauth.access.token=\"${strimzidir:/opt/kafka/oauth/my-token-secret:my-token-key}\";"));
         assertThat(connectConfigurations, containsString("sasl.login.callback.handler.class=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler"));
 
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            Container cont = pod.getSpec().getContainers().get(0);
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_ACCESS_TOKEN.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-token-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_ACCESS_TOKEN.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("my-token-key"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CONFIG.equals(var.getName())).findFirst().orElseThrow().getValue().isEmpty(), is(true));
-        });
     }
 
     @ParallelTest
@@ -1793,19 +1700,17 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=OAUTHBEARER"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required ${strimzienv:KAFKA_CONNECT_OAUTH_CONFIG} oauth.refresh.token=${strimzienv:KAFKA_CONNECT_OAUTH_REFRESH_TOKEN};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required " +
+                "oauth.client.id=\"my-client-id\" " +
+                "oauth.token.endpoint.uri=\"http://my-oauth-server\" " +
+                "oauth.connect.timeout.seconds=\"15\" " +
+                "oauth.read.timeout.seconds=\"15\" " +
+                "oauth.http.retries=\"2\" " +
+                "oauth.http.retry.pause.millis=\"500\" " +
+                "oauth.enable.metrics=\"true\" " +
+                "oauth.include.accept.header=\"false\" " +
+                "oauth.refresh.token=\"${strimzidir:/opt/kafka/oauth/my-token-secret:my-token-key}\";"));
         assertThat(connectConfigurations, containsString("sasl.login.callback.handler.class=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler"));
-
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            Container cont = pod.getSpec().getContainers().get(0);
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_REFRESH_TOKEN.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-token-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_REFRESH_TOKEN.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("my-token-key"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CONFIG.equals(var.getName())).findFirst().orElseThrow().getValue().trim(),
-                    is(String.format("%s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\"", ClientConfig.OAUTH_CLIENT_ID, "my-client-id", ClientConfig.OAUTH_TOKEN_ENDPOINT_URI, "http://my-oauth-server",
-                            ClientConfig.OAUTH_CONNECT_TIMEOUT_SECONDS, "15", ClientConfig.OAUTH_READ_TIMEOUT_SECONDS, "15", ClientConfig.OAUTH_HTTP_RETRIES, "2", ClientConfig.OAUTH_HTTP_RETRY_PAUSE_MILLIS, "500", ClientConfig.OAUTH_ENABLE_METRICS, "true", ClientConfig.OAUTH_INCLUDE_ACCEPT_HEADER, "false")));
-        });
     }
 
     @ParallelTest
@@ -1833,18 +1738,8 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=OAUTHBEARER"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required ${strimzienv:KAFKA_CONNECT_OAUTH_CONFIG} oauth.client.secret=${strimzienv:KAFKA_CONNECT_OAUTH_CLIENT_SECRET};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required oauth.client.id=\"my-client-id\" oauth.token.endpoint.uri=\"http://my-oauth-server\" oauth.scope=\"all\" oauth.audience=\"kafka\" oauth.client.secret=\"${strimzidir:/opt/kafka/oauth/my-secret-secret:my-secret-key}\";"));
         assertThat(connectConfigurations, containsString("sasl.login.callback.handler.class=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler"));
-
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            Container cont = pod.getSpec().getContainers().get(0);
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-secret-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("my-secret-key"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CONFIG.equals(var.getName())).findFirst().orElseThrow().getValue().trim(),
-                    is(String.format("%s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\"", ClientConfig.OAUTH_CLIENT_ID, "my-client-id", ClientConfig.OAUTH_TOKEN_ENDPOINT_URI, "http://my-oauth-server", ClientConfig.OAUTH_SCOPE, "all", ClientConfig.OAUTH_AUDIENCE, "kafka")));
-        });
     }
 
     @ParallelTest
@@ -1873,19 +1768,14 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=OAUTHBEARER"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required ${strimzienv:KAFKA_CONNECT_OAUTH_CONFIG} oauth.client.secret=${strimzienv:KAFKA_CONNECT_OAUTH_CLIENT_SECRET};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required oauth.client.id=\"my-client-id\" " +
+                "oauth.token.endpoint.uri=\"http://my-oauth-server\" " +
+                "oauth.scope=\"all\" oauth.audience=\"kafka\" " +
+                "oauth.sasl.extension.key1=\"value1\" " +
+                "oauth.sasl.extension.key2=\"value2\" " +
+                "oauth.client.secret=\"${strimzidir:/opt/kafka/oauth/my-secret-secret:my-secret-key}\";"));
         assertThat(connectConfigurations, containsString("sasl.login.callback.handler.class=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler"));
 
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            Container cont = pod.getSpec().getContainers().get(0);
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-secret-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("my-secret-key"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CONFIG.equals(var.getName())).findFirst().orElseThrow().getValue().trim(),
-                    is(String.format("%s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\"", ClientConfig.OAUTH_CLIENT_ID, "my-client-id", ClientConfig.OAUTH_TOKEN_ENDPOINT_URI, "http://my-oauth-server",
-                            ClientConfig.OAUTH_SCOPE, "all", ClientConfig.OAUTH_AUDIENCE, "kafka", ClientConfig.OAUTH_SASL_EXTENSION_PREFIX + "key1", "value1", ClientConfig.OAUTH_SASL_EXTENSION_PREFIX + "key2", "value2")));
-        });
     }
 
     @ParallelTest
@@ -1913,18 +1803,12 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=OAUTHBEARER"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required ${strimzienv:KAFKA_CONNECT_OAUTH_CONFIG} oauth.client.assertion=${strimzienv:KAFKA_CONNECT_OAUTH_CLIENT_ASSERTION};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required oauth.client.id=\"my-client-id\" " +
+                "oauth.token.endpoint.uri=\"http://my-oauth-server\" " +
+                "oauth.scope=\"all\" " +
+                "oauth.audience=\"kafka\" " +
+                "oauth.client.assertion=\"${strimzidir:/opt/kafka/oauth/my-secret-secret:my-secret-key}\";"));
         assertThat(connectConfigurations, containsString("sasl.login.callback.handler.class=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler"));
-
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            Container cont = pod.getSpec().getContainers().get(0);
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_ASSERTION.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-secret-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_ASSERTION.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("my-secret-key"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CONFIG.equals(var.getName())).findFirst().orElseThrow().getValue().trim(),
-                    is(String.format("%s=\"%s\" %s=\"%s\" %s=\"%s\" %s=\"%s\"", ClientConfig.OAUTH_CLIENT_ID, "my-client-id", ClientConfig.OAUTH_TOKEN_ENDPOINT_URI, "http://my-oauth-server", ClientConfig.OAUTH_SCOPE, "all", ClientConfig.OAUTH_AUDIENCE, "kafka")));
-        });
     }
 
     @ParallelTest
@@ -1955,21 +1839,13 @@ public class KafkaConnectClusterTest {
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("security.protocol=SASL_PLAINTEXT"));
         assertThat(connectConfigurations, containsString("sasl.mechanism=OAUTHBEARER"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required ${strimzienv:KAFKA_CONNECT_OAUTH_CONFIG} oauth.client.secret=${strimzienv:KAFKA_CONNECT_OAUTH_CLIENT_SECRET} oauth.password.grant.password=${strimzienv:KAFKA_CONNECT_OAUTH_PASSWORD_GRANT_PASSWORD};"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required " +
+                "oauth.client.id=\"my-client-id\" " +
+                "oauth.password.grant.username=\"user1\" " +
+                "oauth.token.endpoint.uri=\"http://my-oauth-server\" " +
+                "oauth.client.secret=\"${strimzidir:/opt/kafka/oauth/my-secret-secret:my-secret-key}\" " +
+                "oauth.password.grant.password=\"${strimzidir:/opt/kafka/oauth/my-password-secret:user1.password}\";"));
         assertThat(connectConfigurations, containsString("sasl.login.callback.handler.class=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler"));
-
-        // Check PodSet
-        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
-        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
-            Container cont = pod.getSpec().getContainers().get(0);
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_PASSWORD_GRANT_PASSWORD.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-password-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_PASSWORD_GRANT_PASSWORD.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("user1.password"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-secret-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("my-secret-key"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CONFIG.equals(var.getName())).findFirst().orElseThrow().getValue().trim(),
-                    is(String.format("%s=\"%s\" %s=\"%s\" %s=\"%s\"",
-                            ClientConfig.OAUTH_CLIENT_ID, "my-client-id", ClientConfig.OAUTH_PASSWORD_GRANT_USERNAME, "user1", ClientConfig.OAUTH_TOKEN_ENDPOINT_URI, "http://my-oauth-server")));
-        });
     }
 
     @ParallelTest
@@ -2044,11 +1920,17 @@ public class KafkaConnectClusterTest {
 
         KafkaConnectCluster kc = KafkaConnectCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, resource, VERSIONS, SHARED_ENV_PROVIDER);
 
+        String oauthSecret = KafkaConnectResources.internalOauthTrustedCertsSecretName(clusterName);
         // Check config map
         ConfigMap configMap = kc.generateConnectConfigMap(new MetricsAndLogging(metricsCM, null));
         String connectConfigurations = configMap.getData().get(KafkaConnectCluster.KAFKA_CONNECT_CONFIGURATION_FILENAME);
         assertThat(connectConfigurations, containsString("sasl.mechanism=OAUTHBEARER"));
-        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required ${strimzienv:KAFKA_CONNECT_OAUTH_CONFIG} oauth.client.secret=${strimzienv:KAFKA_CONNECT_OAUTH_CLIENT_SECRET} oauth.ssl.truststore.location=\"/tmp/kafka/oauth.truststore.p12\" oauth.ssl.truststore.password=${strimzienv:CERTS_STORE_PASSWORD} oauth.ssl.truststore.type=\"PKCS12\";"));
+        assertThat(connectConfigurations, containsString("sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required oauth.client.id=\"my-client-id\" " +
+                "oauth.token.endpoint.uri=\"http://my-oauth-server\" " +
+                "oauth.ssl.endpoint.identification.algorithm=\"\" " +
+                "oauth.client.secret=\"${strimzidir:/opt/kafka/oauth/my-secret-secret:my-secret-key}\" " +
+                "oauth.ssl.truststore.location=\"/opt/kafka/oauth-certs/" + oauthSecret + "/" + oauthSecret + ".crt\" " +
+                "oauth.ssl.truststore.type=\"PEM\";"));
         assertThat(connectConfigurations, containsString("sasl.login.callback.handler.class=io.strimzi.kafka.oauth.client.JaasClientOauthLoginCallbackHandler"));
 
         // Check PodSet
@@ -2056,21 +1938,10 @@ public class KafkaConnectClusterTest {
         PodSetUtils.podSetToPods(podSet).forEach(pod -> {
             Container cont = pod.getSpec().getContainers().get(0);
 
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getName(), is("my-secret-secret"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CLIENT_SECRET.equals(var.getName())).findFirst().orElseThrow().getValueFrom().getSecretKeyRef().getKey(), is("my-secret-key"));
-            assertThat(cont.getEnv().stream().filter(var -> KafkaConnectCluster.ENV_VAR_KAFKA_CONNECT_OAUTH_CONFIG.equals(var.getName())).findFirst().orElseThrow().getValue().trim(),
-                    is(String.format("%s=\"%s\" %s=\"%s\" %s=\"%s\"", ClientConfig.OAUTH_CLIENT_ID, "my-client-id", ClientConfig.OAUTH_TOKEN_ENDPOINT_URI, "http://my-oauth-server", ServerConfig.OAUTH_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM, "")));
-
             // Volume mounts
-            assertThat(cont.getVolumeMounts().stream().filter(mount -> "oauth-certs-first-certificate".equals(mount.getName())).findFirst().orElseThrow().getMountPath(), is(KafkaConnectCluster.OAUTH_TLS_CERTS_BASE_VOLUME_MOUNT + "first-certificate"));
-            assertThat(cont.getVolumeMounts().stream().filter(mount -> "oauth-certs-second-certificate".equals(mount.getName())).findFirst().orElseThrow().getMountPath(), is(KafkaConnectCluster.OAUTH_TLS_CERTS_BASE_VOLUME_MOUNT + "second-certificate"));
-
+            assertThat(cont.getVolumeMounts().stream().filter(mount -> oauthSecret.equals(mount.getName())).findFirst().orElseThrow().getMountPath(), is(KafkaConnectCluster.OAUTH_TLS_CERTS_BASE_VOLUME_MOUNT + oauthSecret));
             // Volumes
-            assertThat(pod.getSpec().getVolumes().stream().filter(vol -> "oauth-certs-first-certificate".equals(vol.getName())).findFirst().orElseThrow().getSecret().getItems().isEmpty(), is(true));
-            assertThat(pod.getSpec().getVolumes().stream().filter(vol -> "oauth-certs-second-certificate".equals(vol.getName())).findFirst().orElseThrow().getSecret().getItems().isEmpty(), is(true));
-
-            // Environment variable
-            assertThat(cont.getEnv().stream().filter(e -> "KAFKA_CONNECT_OAUTH_TRUSTED_CERTS".equals(e.getName())).findFirst().orElseThrow().getValue(), is("first-certificate/ca.crt;second-certificate/tls.crt;first-certificate/ca2.crt"));
+            assertThat(pod.getSpec().getVolumes().stream().filter(vol -> oauthSecret.equals(vol.getName())).findFirst().orElseThrow().getSecret().getItems().isEmpty(), is(true));
         });
     }
 
@@ -2204,18 +2075,32 @@ public class KafkaConnectClusterTest {
 
         KafkaConnectCluster kc = KafkaConnectCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, kafkaConnect, VERSIONS, SHARED_ENV_PROVIDER);
 
-        assertThat(kc.metrics().isEnabled(), is(true));
-        assertThat(kc.metrics().getConfigMapName(), is("my-metrics-configuration"));
-        assertThat(kc.metrics().getConfigMapKey(), is("config.yaml"));
+        assertThat(kc.metrics(), is(notNullValue()));
+        assertThat(((JmxPrometheusExporterModel) kc.metrics()).getConfigMapName(), is("my-metrics-configuration"));
+        assertThat(((JmxPrometheusExporterModel) kc.metrics()).getConfigMapKey(), is("config.yaml"));
     }
 
     @ParallelTest
     public void testMetricsParsingNoMetrics() {
         KafkaConnectCluster kc = KafkaConnectCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, this.resource, VERSIONS, SHARED_ENV_PROVIDER);
+        assertThat(kc.metrics(), is(nullValue()));
+    }
 
-        assertThat(kc.metrics().isEnabled(), is(false));
-        assertThat(kc.metrics().getConfigMapName(), is(nullValue()));
-        assertThat(kc.metrics().getConfigMapKey(), is(nullValue()));
+    @ParallelTest
+    public void testStrimziMetricsReporterConfig() {
+        KafkaConnect resourceWithMetrics = new KafkaConnectBuilder(resource)
+            .editSpec()
+                .withNewStrimziMetricsReporterConfig()
+                    .withNewValues()
+                        .withAllowList(List.of("kafka_log.*", "kafka_network.*"))
+                    .endValues()
+                .endStrimziMetricsReporterConfig()
+            .endSpec()
+            .build();
+        InvalidResourceException ex = assertThrows(InvalidResourceException.class,
+            () -> KafkaConnectCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, resourceWithMetrics, VERSIONS, SHARED_ENV_PROVIDER));
+
+        assertThat(ex.getMessage(), is("The Strimzi Metrics Reporter is not supported with this component"));
     }
 
     @ParallelTest
@@ -2286,5 +2171,96 @@ public class KafkaConnectClusterTest {
         ResourceRequirements initContainersResources = kcc.createInitContainer(ImagePullPolicy.IFNOTPRESENT).getResources();
         assertThat(initContainersResources.getRequests(), is(requirements));
         assertThat(initContainersResources.getLimits(), is(limits));
+    }
+
+    @ParallelTest
+    public void testLoggingWithLog4j1() {
+        KafkaConnect resource = new KafkaConnectBuilder(this.resource)
+                .editSpec()
+                    .withVersion("3.9.0")
+                .endSpec()
+                .build();
+
+        KafkaConnectCluster kc = KafkaConnectCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        assertThat(kc.logging().isLog4j2(), is(false));
+
+        // Check config map
+        ConfigMap cm = kc.generateConnectConfigMap(new MetricsAndLogging(metricsCM, null));
+        assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(notNullValue()));
+        assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(nullValue()));
+    }
+
+    @ParallelTest
+    public void testLoggingWithLog4j4() {
+        assertThat(kc.logging().isLog4j2(), is(true));
+
+        // Check config map
+        ConfigMap cm = kc.generateConnectConfigMap(new MetricsAndLogging(metricsCM, null));
+        assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(nullValue()));
+        assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(notNullValue()));
+    }
+
+    /**
+     * This test uses the same secret to hold the certs for TLS and the credentials for SCRAM SHA 512 client authentication. It checks that
+     * the volumes and volume mounts that reference the secret are correctly created and that each volume name is only created once - volumes
+     * with duplicate names will cause Kubernetes to reject the deployment.
+     */
+    @ParallelTest
+    public void testOciConnectorPlugins() {
+        KafkaConnect resource = new KafkaConnectBuilder(this.resource)
+            .editSpec()
+                .withPlugins(
+                        new MountedPluginBuilder()
+                                .withName("first-connector")
+                                .withArtifacts(new ImageArtifactBuilder().withReference("first-artifact:latest").build(),
+                                        new ImageArtifactBuilder().withReference("second-artifact:0.2.0").withPullPolicy("Never").build())
+                                .build(),
+                        new MountedPluginBuilder()
+                                .withName("second-connector")
+                                .withArtifacts(new ImageArtifactBuilder().withReference("third-artifact:latest").withPullPolicy("IfNotPresent").build())
+                                .build()
+                )
+            .endSpec()
+            .build();
+
+        KafkaConnectCluster kc = KafkaConnectCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        // Check PodSet
+        StrimziPodSet podSet = kc.generatePodSet(3, Map.of(), Map.of(), false, null, null, null);
+        PodSetUtils.podSetToPods(podSet).forEach(pod -> {
+            assertThat(pod.getSpec().getVolumes().size(), is(5));
+            // Default volumes used for /tmp an for Connect configuration Config Map
+            assertThat(pod.getSpec().getVolumes().get(0).getName(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
+            assertThat(pod.getSpec().getVolumes().get(1).getName(), is("kafka-connect-configurations"));
+
+            // Connector plugin volumes
+            assertThat(pod.getSpec().getVolumes().get(2).getName(), is("plugin-first-connector-0a4dc47f"));
+            assertThat(pod.getSpec().getVolumes().get(2).getImage().getReference(), is("first-artifact:latest"));
+            assertThat(pod.getSpec().getVolumes().get(2).getImage().getPullPolicy(), is(nullValue()));
+            assertThat(pod.getSpec().getVolumes().get(3).getName(), is("plugin-first-connector-73d69cbd"));
+            assertThat(pod.getSpec().getVolumes().get(3).getImage().getReference(), is("second-artifact:0.2.0"));
+            assertThat(pod.getSpec().getVolumes().get(3).getImage().getPullPolicy(), is("Never"));
+            assertThat(pod.getSpec().getVolumes().get(4).getName(), is("plugin-second-connector-695ab9d6"));
+            assertThat(pod.getSpec().getVolumes().get(4).getImage().getReference(), is("third-artifact:latest"));
+            assertThat(pod.getSpec().getVolumes().get(4).getImage().getPullPolicy(), is("IfNotPresent"));
+
+            List<Container> containers = pod.getSpec().getContainers();
+
+            assertThat(containers.get(0).getVolumeMounts().size(), is(5));
+            // Default volume mounts used for /tmp an for Connect configuration Config Map
+            assertThat(containers.get(0).getVolumeMounts().get(0).getName(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
+            assertThat(containers.get(0).getVolumeMounts().get(0).getMountPath(), is(VolumeUtils.STRIMZI_TMP_DIRECTORY_DEFAULT_MOUNT_PATH));
+            assertThat(containers.get(0).getVolumeMounts().get(1).getName(), is("kafka-connect-configurations"));
+            assertThat(containers.get(0).getVolumeMounts().get(1).getMountPath(), is("/opt/kafka/custom-config/"));
+
+            // Connector plugin volume mounts
+            assertThat(containers.get(0).getVolumeMounts().get(2).getName(), is("plugin-first-connector-0a4dc47f"));
+            assertThat(containers.get(0).getVolumeMounts().get(2).getMountPath(), is("/opt/kafka/plugins/first-connector/0a4dc47f"));
+            assertThat(containers.get(0).getVolumeMounts().get(3).getName(), is("plugin-first-connector-73d69cbd"));
+            assertThat(containers.get(0).getVolumeMounts().get(3).getMountPath(), is("/opt/kafka/plugins/first-connector/73d69cbd"));
+            assertThat(containers.get(0).getVolumeMounts().get(4).getName(), is("plugin-second-connector-695ab9d6"));
+            assertThat(containers.get(0).getVolumeMounts().get(4).getMountPath(), is("/opt/kafka/plugins/second-connector/695ab9d6"));
+        });
     }
 }

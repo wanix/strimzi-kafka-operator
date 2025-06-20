@@ -1,17 +1,43 @@
 # CHANGELOG
 
+## 0.47.0
+
+* Adding progress tracking for Cruise Control rebalances
+* Add support for Kafka 3.9.1
+* Fixed MirrorMaker 2 client rack init container override being ignored.
+* Support for Kubernetes Image Volumes to mount custom plugins
+
+### Major changes, deprecations and removals
+
+* Strimzi 0.47.0 (and any of its patch releases) is the last Strimzi version with support for Kubernetes 1.25 and 1.26.
+  From Strimzi 0.48.0 on, we will support only Kubernetes 1.27 and newer.
+
 ## 0.46.0
 
+* Add support for Kafka 4.0.0.
+  Remove support for Kafka 3.8.0 and 3.8.1.
 * Support for ZooKeeper-based Apache Kafka clusters and for KRaft migration has been removed
 * Support for MirrorMaker 1 has been removed
 * Support for storage class overrides has been removed
 * Added support to configure `dnsPolicy` and `dnsConfig` using the `template` sections.
+* Added support for Strimzi Metrics Reporter to the Kafka brokers/controllers component.
 * Store Kafka node certificates in separate Secrets, one Secret per pod.
 * Allow configuring `ssl.principal.mapping.rules` and custom trusted CAs in Kafka brokers with `type: custom` authentication
 * Moved HTTP bridge configuration to the ConfigMap setup by the operator.
-* Dependency updates (Vert.x 4.5.12, Netty 4.1.117.Final)
+* Dependency updates (Vert.x 4.5.14, Netty 4.1.118.Final)
 * Moved Kafka Connect configuration to the ConfigMap created by the operator.
 * Update Kafka Exporter to [1.9.0](https://github.com/danielqsj/kafka_exporter/releases/tag/v1.9.0)
+* Adopted new Kafka Connect health check endpoint (see [proposal 89](https://github.com/strimzi/proposals/blob/main/089-adopt-connect-health-endpoint.md)).
+* Update standalone User Operator to handle Cluster CA cert Secret being missing when TLS is not needed.
+* Strimzi Drain Cleaner updated to 1.3.0 (included in the Strimzi installation files)
+* Implicit IPv4 preference when enabling JMX has been removed, and will now use JVM defaults.
+  This will make the cluster boot up correctly in IPv6 only environments, where IPv4 preference will break it due to lack of IPv4 addresses.
+* Improved the MirrorMaker2 example Grafana dashboard to set metric units and include chart descriptions.
+* The `ContinueReconciliationOnManualRollingUpdateFailure` feature gate moves to GA stage and is permanently enabled without the possibility to disable it.
+* Update OAuth library to 0.16.2.
+* Update HTTP bridge to 0.32.0.
+* Kubernetes events emitted during a Pod restart updated to have the Kafka resource as the `regardingObject` and the Pod in the `related` field.
+* Kafka Connect truststore and keystore configurations now uses Kafka Kubernetes Config Provider to load PEM certificates directly from secrets.
 
 ### Major changes, deprecations and removals
 
@@ -26,10 +52,19 @@
 * The storage overrides for configuring per-broker storage class are not supported anymore.
   If you are using the storage overrides, you should instead use multiple KafkaNodePool resources with a different storage class each.
   For more details about migrating from storage overrides, please follow the [documentation](https://strimzi.io/docs/operators/0.45.0/full/deploying.html#con-config-storage-zookeeper-str).
+* The Open Policy Agent authorization (`type: opa`) has been deprecated and will be removed in the future.
+  To use the Open Policy Agent authorizer, you can use the `type: custom` authorization.
 * Removed the `statefulset.kubernetes.io/pod-name` label from pods and external listeners Kubernetes Services.
   * If you have any custom setup leveraging such label, please use the `strimzi.io/pod-name` one instead.
 * The `secrets` list for mounting additional Kubernetes Secrets in `type: custom` authentication was deprecated and will be removed in the future.
   Please use the template section to configure additional volumes instead.
+* Kafka 4.0 and newer is using Log4j2 for logging instead of Reload4j/Log4j1.
+  If you have any custom logging configuration, you might need to update it during the upgrade to Kafka 4.0.
+* Kubernetes events for Pod restarts no longer have the Pod as the `regardingObject`.
+  If you are using `regardingObject` as a `field-selector` for listing events you must update the selector to specify the Kafka resource instead.
+* From Kafka 4.0.0, to enable the JMXReporter you must either enable metrics in `.spec.kafka.metrics`, or explicitly add JMXReporter in `metric.reporters`.
+* KafkaConnect now uses PEM files instead of P12/JKS for keystore and truststore. 
+  * If you override "ssl.truststore.location" and "ssl.keystore.location" in your Connector configurations, then you would need update them to override "ssl.truststore.certificates" and "ssl.keystore.certificate.chain" with PEM files instead.
 
 ## 0.45.0
 
@@ -46,7 +81,7 @@
 ### Major changes, deprecations and removals
 
 * **Strimzi 0.45 is the last minor Strimzi version with support for ZooKeeper-based Apache Kafka clusters and MirrorMaker 1 deployments.**
-  **Please make sure to [migrate to KRaft](https://strimzi.io/docs/operators/latest/full/deploying.html#assembly-kraft-mode-str) and MirrorMaker 2 before upgrading to Strimzi 0.46 or newer.**
+  **Please make sure to [migrate to KRaft](https://strimzi.io/docs/operators/0.45.0/full/deploying.html#assembly-kraft-mode-str) and MirrorMaker 2 before upgrading to Strimzi 0.46 or newer.**
 * **Strimzi 0.45 is the last Strimzi version to include the [Strimzi EnvVar Configuration Provider](https://github.com/strimzi/kafka-env-var-config-provider) (deprecated in Strimzi 0.38.0) and [Strimzi MirrorMaker 2 Extensions](https://github.com/strimzi/mirror-maker-2-extensions) (deprecated in Strimzi 0.28.0).**
   Please use the Apache Kafka [EnvVarConfigProvider](https://github.com/strimzi/kafka-env-var-config-provider?tab=readme-ov-file#deprecation-notice) and [Identity Replication Policy](https://github.com/strimzi/mirror-maker-2-extensions?tab=readme-ov-file#identity-replication-policy) instead. 
 

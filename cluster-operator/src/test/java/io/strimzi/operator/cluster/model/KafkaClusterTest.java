@@ -79,7 +79,8 @@ import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.model.jmx.JmxModel;
 import io.strimzi.operator.cluster.model.logging.LoggingModel;
-import io.strimzi.operator.cluster.model.metrics.MetricsModel;
+import io.strimzi.operator.cluster.model.metrics.JmxPrometheusExporterModel;
+import io.strimzi.operator.cluster.model.metrics.StrimziMetricsReporterModel;
 import io.strimzi.operator.cluster.model.nodepools.NodePoolUtils;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
@@ -258,9 +259,9 @@ public class KafkaClusterTest {
 
     private List<Secret> generateBrokerSecrets(Set<String> externalBootstrapAddress, Map<Integer, Set<String>> externalAddresses) {
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), CLUSTER, null, null);
-        clusterCa.createRenewOrReplace(NAMESPACE, Map.of(), Map.of(), Map.of(), null, true);
+        clusterCa.createRenewOrReplace(true, false, false);
         ClientsCa clientsCa = new ClientsCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), null, null, null, null, 365, 30, true, CertificateExpirationPolicy.RENEW_CERTIFICATE);
-        clientsCa.createRenewOrReplace(NAMESPACE, Map.of(), Map.of(), Map.of(), null, true);
+        clientsCa.createRenewOrReplace(true, false, false);
 
         return KC.generateCertificatesSecrets(clusterCa, clientsCa, List.of(), externalBootstrapAddress, externalAddresses, true);
     }
@@ -298,8 +299,40 @@ public class KafkaClusterTest {
                 TestUtils.checkOwnerReference(cm, POOL_BROKERS);
             }
 
-            assertThat(cm.getData().get(MetricsModel.CONFIG_MAP_KEY), is("{\"animal\":\"wombat\"}"));
+            assertThat(cm.getData().get(JmxPrometheusExporterModel.CONFIG_MAP_KEY), is("{\"animal\":\"wombat\"}"));
         }
+    }
+
+    @ParallelTest
+    public void testStrimziMetricsReporterConfigs() {
+        Kafka kafkaAssembly = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafka()
+                        .withNewStrimziMetricsReporterConfig()
+                            .withNewValues()
+                                .withAllowList("kafka_log.*", "kafka_network.*")
+                            .endValues()
+                        .endStrimziMetricsReporterConfig()
+                    .endKafka()
+                .endSpec()
+                .build();
+
+        List<KafkaPool> pools = NodePoolUtils.createKafkaPools(Reconciliation.DUMMY_RECONCILIATION, kafkaAssembly, List.of(POOL_CONTROLLERS, POOL_MIXED, POOL_BROKERS), Map.of(), KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, SHARED_ENV_PROVIDER);
+        KafkaCluster kc = KafkaCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, kafkaAssembly, pools, VERSIONS, KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, null, SHARED_ENV_PROVIDER);
+
+        List<ConfigMap> cms = kc.generatePerBrokerConfigurationConfigMaps(new MetricsAndLogging(null, null), ADVERTISED_HOSTNAMES, ADVERTISED_PORTS);
+        assertThat(cms.size(), is(8));
+
+        for (ConfigMap cm : cms) {
+            assertThat(cm.getData().toString(), containsString("kafka.metrics.reporters=io.strimzi.kafka.metrics.YammerPrometheusMetricsReporter"));
+            assertThat(cm.getData().toString(), containsString("prometheus.metrics.reporter.listener=http://:9404"));
+            assertThat(cm.getData().toString(), containsString("prometheus.metrics.reporter.allowlist=kafka_log.*,kafka_network.*"));
+        }
+
+        NetworkPolicy np = kc.generateNetworkPolicy(null, null);
+        List<NetworkPolicyIngressRule> rules = np.getSpec().getIngress().stream().filter(ing -> ing.getPorts().get(0).getPort().equals(new IntOrString(StrimziMetricsReporterModel.METRICS_PORT))).toList();
+
+        assertThat(rules.size(), is(1));
     }
 
     @ParallelTest
@@ -951,7 +984,7 @@ public class KafkaClusterTest {
     }
 
     @ParallelTest
-    public void testContainerPorts() {
+    public void testWithJmxMetricsExporterContainerPorts() {
         Kafka kafka = new KafkaBuilder(KAFKA)
                 .editSpec()
                     .editKafka()
@@ -966,6 +999,29 @@ public class KafkaClusterTest {
                 .endSpec()
                 .build();
 
+        assertExpectedContainerPortsAreSet(kafka);
+    }
+
+    @ParallelTest
+    public void testWithStrimziMetricsReporterContainerPorts() {
+        Kafka kafka = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafka()
+                        .withListeners(new GenericKafkaListenerBuilder().withName("tls").withPort(9093).withType(KafkaListenerType.INTERNAL).withTls().build(),
+                                new GenericKafkaListenerBuilder().withName("external").withPort(9094).withType(KafkaListenerType.NODEPORT).withTls().build())
+                        .withNewStrimziMetricsReporterConfig()
+                            .withNewValues()
+                                .withAllowList("kafka_log.*", "kafka_network.*")
+                            .endValues()
+                        .endStrimziMetricsReporterConfig()
+                    .endKafka()
+                .endSpec()
+                .build();
+
+        assertExpectedContainerPortsAreSet(kafka);
+    }
+
+    private void assertExpectedContainerPortsAreSet(Kafka kafka) {
         List<KafkaPool> pools = NodePoolUtils.createKafkaPools(Reconciliation.DUMMY_RECONCILIATION, kafka, List.of(POOL_CONTROLLERS, POOL_MIXED, POOL_BROKERS), Map.of(), KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, SHARED_ENV_PROVIDER);
         KafkaCluster kc = KafkaCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, kafka, pools, VERSIONS, KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, null, SHARED_ENV_PROVIDER);
         List<StrimziPodSet> podSets = kc.generatePodSets(true, null, null, node -> Map.of());
@@ -1140,10 +1196,20 @@ public class KafkaClusterTest {
     }
 
     @ParallelTest
-    public void testPerBrokerConfigMaps() {
+    public void testPerBrokerConfigMapsLog4j1() {
         MetricsAndLogging metricsAndLogging = new MetricsAndLogging(null, null);
-        KafkaCluster kc = KafkaCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, KAFKA, POOLS, VERSIONS, KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, "dummy-cluster-id", SHARED_ENV_PROVIDER);
+        KafkaVersionChange versionChange = new KafkaVersionChange(KafkaVersionTestUtils.getKafkaVersionLookup().version("3.9.0"), KafkaVersionTestUtils.getKafkaVersionLookup().version("3.9.0"), null, null, "3.9");
+        Kafka kafka = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafka()
+                        .withVersion("3.9.0")
+                    .endKafka()
+                .endSpec()
+                .build();
+        KafkaCluster kc = KafkaCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, kafka, POOLS, VERSIONS, versionChange, "dummy-cluster-id", SHARED_ENV_PROVIDER);
         List<ConfigMap> cms = kc.generatePerBrokerConfigurationConfigMaps(metricsAndLogging, ADVERTISED_HOSTNAMES, ADVERTISED_PORTS);
+
+        assertThat(kc.logging().isLog4j2(), is(false));
 
         assertThat(cms.size(), is(8));
 
@@ -1153,6 +1219,7 @@ public class KafkaClusterTest {
             if (cm.getMetadata().getName().contains("controllers")) {
                 assertThat(cm.getData().size(), is(5));
                 assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(notNullValue()));
+                assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(nullValue()));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), is(notNullValue()));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), CoreMatchers.containsString("process.roles=controller\n"));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_LISTENERS_FILENAME), is(nullValue()));
@@ -1160,6 +1227,7 @@ public class KafkaClusterTest {
             } else if (cm.getMetadata().getName().contains("brokers")) {
                 assertThat(cm.getData().size(), is(5));
                 assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(notNullValue()));
+                assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(nullValue()));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), is(notNullValue()));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), CoreMatchers.containsString("process.roles=broker\n"));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_LISTENERS_FILENAME), is("PLAIN_9092 TLS_9093"));
@@ -1167,6 +1235,48 @@ public class KafkaClusterTest {
             } else {
                 assertThat(cm.getData().size(), is(5));
                 assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(notNullValue()));
+                assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(nullValue()));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), is(notNullValue()));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), CoreMatchers.containsString("process.roles=broker,controller\n"));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_LISTENERS_FILENAME), is("PLAIN_9092 TLS_9093"));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CLUSTER_ID_FILENAME), is("dummy-cluster-id"));
+            }
+        }
+    }
+
+    @ParallelTest
+    public void testPerBrokerConfigMaps() {
+        MetricsAndLogging metricsAndLogging = new MetricsAndLogging(null, null);
+        KafkaCluster kc = KafkaCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, KAFKA, POOLS, VERSIONS, KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, "dummy-cluster-id", SHARED_ENV_PROVIDER);
+        List<ConfigMap> cms = kc.generatePerBrokerConfigurationConfigMaps(metricsAndLogging, ADVERTISED_HOSTNAMES, ADVERTISED_PORTS);
+
+        assertThat(kc.logging().isLog4j2(), is(true));
+
+        assertThat(cms.size(), is(8));
+
+        for (ConfigMap cm : cms)    {
+            assertThat(cm.getMetadata().getName(), startsWith("foo-"));
+
+            if (cm.getMetadata().getName().contains("controllers")) {
+                assertThat(cm.getData().size(), is(5));
+                assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(nullValue()));
+                assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(notNullValue()));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), is(notNullValue()));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), CoreMatchers.containsString("process.roles=controller\n"));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_LISTENERS_FILENAME), is(nullValue()));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CLUSTER_ID_FILENAME), is("dummy-cluster-id"));
+            } else if (cm.getMetadata().getName().contains("brokers")) {
+                assertThat(cm.getData().size(), is(5));
+                assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(nullValue()));
+                assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(notNullValue()));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), is(notNullValue()));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), CoreMatchers.containsString("process.roles=broker\n"));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_LISTENERS_FILENAME), is("PLAIN_9092 TLS_9093"));
+                assertThat(cm.getData().get(KafkaCluster.BROKER_CLUSTER_ID_FILENAME), is("dummy-cluster-id"));
+            } else {
+                assertThat(cm.getData().size(), is(5));
+                assertThat(cm.getData().get(LoggingModel.LOG4J1_CONFIG_MAP_KEY), is(nullValue()));
+                assertThat(cm.getData().get(LoggingModel.LOG4J2_CONFIG_MAP_KEY), is(notNullValue()));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), is(notNullValue()));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_CONFIGURATION_FILENAME), CoreMatchers.containsString("process.roles=broker,controller\n"));
                 assertThat(cm.getData().get(KafkaCluster.BROKER_LISTENERS_FILENAME), is("PLAIN_9092 TLS_9093"));
@@ -1963,16 +2073,14 @@ public class KafkaClusterTest {
         List<KafkaPool> pools = NodePoolUtils.createKafkaPools(Reconciliation.DUMMY_RECONCILIATION, kafkaAssembly, List.of(POOL_CONTROLLERS, POOL_MIXED, POOL_BROKERS), Map.of(), KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, SHARED_ENV_PROVIDER);
         KafkaCluster kc = KafkaCluster.fromCrd(Reconciliation.DUMMY_RECONCILIATION, kafkaAssembly, pools, VERSIONS, KafkaVersionTestUtils.DEFAULT_KRAFT_VERSION_CHANGE, null, SHARED_ENV_PROVIDER);
 
-        assertThat(kc.metrics().isEnabled(), is(true));
-        assertThat(kc.metrics().getConfigMapName(), is("my-metrics-configuration"));
-        assertThat(kc.metrics().getConfigMapKey(), is("config.yaml"));
+        assertThat(kc.metrics(), is(notNullValue()));
+        assertThat(((JmxPrometheusExporterModel) kc.metrics()).getConfigMapName(), is("my-metrics-configuration"));
+        assertThat(((JmxPrometheusExporterModel) kc.metrics()).getConfigMapKey(), is("config.yaml"));
     }
 
     @ParallelTest
     public void testMetricsParsingNoMetrics() {
-        assertThat(KC.metrics().isEnabled(), is(false));
-        assertThat(KC.metrics().getConfigMapName(), is(nullValue()));
-        assertThat(KC.metrics().getConfigMapKey(), is(nullValue()));
+        assertThat(KC.metrics(), is(nullValue()));
     }
 
     @ParallelTest
@@ -2216,7 +2324,7 @@ public class KafkaClusterTest {
 
         // Minimum supported versions
         assertDoesNotThrow(() -> KafkaCluster.validateMetadataVersion("3.3"));
-        assertDoesNotThrow(() -> KafkaCluster.validateMetadataVersion("3.3-IV0"));
+        assertDoesNotThrow(() -> KafkaCluster.validateMetadataVersion("3.3-IV3"));
 
         // Invalid Values
         InvalidResourceException e = assertThrows(InvalidResourceException.class, () -> KafkaCluster.validateMetadataVersion("3.6-IV9"));
@@ -2226,10 +2334,10 @@ public class KafkaClusterTest {
         assertThat(e.getMessage(), containsString("Metadata version 3 is invalid"));
 
         e = assertThrows(InvalidResourceException.class, () -> KafkaCluster.validateMetadataVersion("3.2"));
-        assertThat(e.getMessage(), containsString("The oldest supported metadata version is 3.3-IV0"));
+        assertThat(e.getMessage(), containsString("Metadata version 3.2 is invalid"));
 
         e = assertThrows(InvalidResourceException.class, () -> KafkaCluster.validateMetadataVersion("3.2-IV0"));
-        assertThat(e.getMessage(), containsString("The oldest supported metadata version is 3.3-IV0"));
+        assertThat(e.getMessage(), containsString("Metadata version 3.2-IV0 is invalid"));
     }
 
     @ParallelTest

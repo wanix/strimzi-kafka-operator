@@ -115,7 +115,7 @@ tls:
   trustedCertificates: []
 ----
 
-Similarly, you can use the `tlstrustedCertificates` property in the configuration for `oauth`, `keycloak`, and `opa` authentication and authorization types that integrate with authorization servers.
+Similarly, you can use the `tlsTrustedCertificates` property in the configuration for `oauth` and `keycloak` authentication and authorization types that integrate with authorization servers.
 The configuration sets up encrypted TLS connections to the authorization server.
 
 .Example TLS encryption configuration for authentication types
@@ -433,11 +433,19 @@ For more information about the `livenessProbe` and `readinessProbe` options, see
 == `metricsConfig`
 
 Use the `metricsConfig` property to enable and configure Prometheus metrics.
+Strimzi provides support for Prometheus JMX Exporter and Strimzi Metrics Reporter. Only one of these can be selected at any given time.
 
-The `metricsConfig` property contains a reference to a ConfigMap that has additional configurations for the {JMXExporter}.
-Strimzi supports Prometheus metrics using Prometheus JMX exporter to convert the JMX metrics supported by Apache Kafka to Prometheus metrics.
+When metrics are enabled, they are exposed on port 9404.
 
-To enable Prometheus metrics export without further configuration, you can reference a ConfigMap containing an empty file under `metricsConfig.valueFrom.configMapKeyRef.key`.
+When the `metricsConfig` property is not defined in the resource, the Prometheus metrics are not enabled.
+
+For more information about setting up and deploying Prometheus and Grafana, see link:{BookURLDeploying}#assembly-metrics-str[Introducing Metrics to Kafka^].
+
+.Using Prometheus JMX Exporter
+The `metricsConfig` property contains a reference to a `ConfigMap` that has additional configurations for the {JMXExporter}.
+When configured to use Prometheus JMX Exporter, Strimzi converts the JMX metrics provided by Apache Kafka into a Prometheus-compatible format.
+
+To enable Prometheus metrics export without further configuration, you can reference a `ConfigMap` containing an empty file under `metricsConfig.valueFrom.configMapKeyRef.key`.
 When referencing an empty file, all metrics are exposed as long as they have not been renamed.
 
 .Example ConfigMap with metrics configuration for Kafka
@@ -481,11 +489,32 @@ spec:
     # ...
 ----
 
-When metrics are enabled, they are exposed on port 9404.
+.Using Strimzi Metrics Reporter
+The `metricsConfig` property contains configurations for the {StrimziMetricsReporter}.
+The Strimzi Metrics Reporter offers a lightweight solution for exposing Kafka metrics in Prometheus format, and avoiding complex mapping rules that can introduce latency.
 
-When the `metricsConfig` (or deprecated `metrics`) property is not defined in the resource, the Prometheus metrics are disabled.
+To enable Strimzi Metrics Reporter, set the type to `strimziMetricsReporter`.
+The `allowList` configuration is a comma-separated list of regex patterns to filter the metrics that are collected. This defaults to `.*`,  which allows all metrics.
 
-For more information about setting up and deploying Prometheus and Grafana, see link:{BookURLDeploying}#assembly-metrics-str[Introducing Metrics to Kafka^].
+NOTE: Using `strimziMetricsReporter` is only supported in the Kafka brokers and controllers at the moment.
+
+.Example metrics configuration for Kafka
+[source,yaml,subs="+attributes"]
+----
+apiVersion: {KafkaApiVersion}
+kind: Kafka
+metadata:
+  name: my-cluster
+spec:
+  kafka:
+    # ...
+    metricsConfig:
+      type: strimziMetricsReporter
+      values:
+        allowList:
+          key: ".*"
+    # ...
+----
 
 [id='con-common-configuration-jvm-{context}']
 == `jvmOptions`
@@ -673,6 +702,7 @@ Supported Volume Types
 * EmptyDir
 * PersistentVolumeClaims
 * CSI Volumes
+* Image Volumes
 
 .Example configuration for additional volumes
 [source,yaml,subs=attributes+]
@@ -702,6 +732,9 @@ spec:
               volumeAttributes:
                 csi.cert-manager.io/issuer-name: my-ca
                 csi.cert-manager.io/dns-names: ${POD_NAME}.${POD_NAMESPACE}.svc.cluster.local
+          - name: example-oci-plugin
+            image:
+              reference: my-registry.io/oci-artifacts/example-plugin:latest
       kafkaContainer:
         volumeMounts:
           - name: example-secret
@@ -714,7 +747,16 @@ spec:
             mountPath: /mnt/data
           - name: example-csi-volume
             mountPath: /mnt/certificate
+          - name: example-oci-plugin
+            mountPath: /mnt/example-plugin
 ----
 
 You can use volumes to store files containing configuration values for a Kafka component and then load those values using a configuration provider.
 For more information, see link:{BookURLDeploying}#assembly-loading-config-with-providers-str[Loading configuration values from external sources^].
+
+You can also use additional volumes to mount custom plugins:
+
+* To include custom plugins in the User Operator and Topic Operator, set the `JAVA_CLASSPATH` environment variable  to modify the Java classpath.
+* To include custom plugins in the Kafka operands and Cruise Control, set the `CLASSPATH` environment variable to modify the Java classpath.
+* To add Kafka Connect connectors, see link:{BookURLDeploying}#using-kafka-connect-with-plug-ins-str[Adding Kafka Connect connectors^].
+* Some plugins, such as the Tiered Storage plugins, may require their own classpath configuration.

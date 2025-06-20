@@ -296,7 +296,8 @@ public class KubernetesRestartEventsMockTest {
 
     @Test
     void testEventEmittedWhenCaCertHasOldGeneration(Vertx vertx, VertxTestContext context) {
-        Secret patched = modifySecretWithAnnotation(clusterCa.caCertSecret(), Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "-1");
+        Secret caCertSecret = createInitialCaCertSecret(namespace, CLUSTER_NAME, clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456");
+        Secret patched = modifySecretWithAnnotation(caCertSecret, Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "-1");
         ClusterCa oldGenClusterCa = createClusterCaWithSecret(patched);
 
         KafkaCluster kafkaCluster = KafkaClusterCreator.createKafkaCluster(reconciliation,
@@ -555,7 +556,9 @@ public class KubernetesRestartEventsMockTest {
             }
 
             Event restartEvent = maybeEvent.get();
-            assertThat(restartEvent.getRegarding().getName(), is(kafkaPod().getMetadata().getName()));
+            assertThat(restartEvent.getRelated().getName(), is(kafkaPod().getMetadata().getName()));
+            assertThat(restartEvent.getRegarding().getName(), is(CLUSTER_NAME));
+            assertThat(restartEvent.getRegarding().getKind(), is(Kafka.RESOURCE_KIND));
             context.completeNow();
         }));
     }

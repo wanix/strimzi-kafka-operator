@@ -1,29 +1,32 @@
 // This assembly is included in:
 //
 // overview/overview.adoc
-// deploying/assembly_deploy-intro.adoc
 
 [id="overview-components_{context}"]
-= Strimzi Operators
+= Strimzi operators
 
 [role="_abstract"]
-Operators are a method of packaging, deploying, and managing Kubernetes applications.
-They provide a way to extend the Kubernetes API and simplify the administration tasks associated with specific applications.
+Operators are Kubernetes components that package, deploy, and manage applications by extending the Kubernetes API. 
+They simplify administrative tasks and reduce manual intervention.
 
-Strimzi operators support tasks related to a Kafka deployment.
-Strimzi custom resources provide the deployment configuration.
-This includes configuration for Kafka clusters, topics, users, and other components.
-Leveraging custom resource configuration, Strimzi operators create, configure, and manage Kafka components within a Kubernetes environment.
-Using operators reduces the need for manual intervention and streamlines the process of managing Kafka in a Kubernetes cluster.
+Strimzi provides a set of operators to automate the deployment and management of Apache Kafka on Kubernetes. 
+Strimzi custom resources define the configuration for each deployment.
 
-Strimzi provides the following operators for managing a Kafka cluster running within a Kubernetes cluster.
+Strimzi includes the following operators:
 
-Cluster Operator:: Deploys and manages Apache Kafka clusters, Kafka Connect, Kafka MirrorMaker, Kafka Bridge, Kafka Exporter, Cruise Control, and the Entity Operator
-Entity Operator:: Comprises the Topic Operator and User Operator
-Topic Operator:: Manages Kafka topics
-User Operator:: Manages Kafka users
+Cluster Operator:: Manages Kafka clusters and related components
+Topic Operator:: Creates, configures, and deletes Kafka topics
+User Operator:: Manages Kafka users and their authentication credentials
 
-The Cluster Operator can deploy the Topic Operator and User Operator as part of an *Entity Operator* configuration at the same time as a Kafka cluster.
+The Cluster Operator can deploy the Entity Operator, which runs the Topic Operator and User Operator in a single pod. 
+The Entity Operator can be configured to run one or both operators.
+
+NOTE: The Entity Operator does not manage Kafka clusters. 
+It simply runs the Topic Operator and User Operator in separate containers within its pod, allowing them to handle topic and user management.
+
+For Kafka clusters not managed by Strimzi, the Topic Operator and User Operator can also be deployed standalone (without the Entity Operator).
+
+Additionally, Strimzi provides Drain Cleaner, a separate tool that can be used alongside the Cluster Operator to assist with safe pod eviction during maintenance or upgrades. 
 
 .Operators within the Strimzi architecture
 
@@ -37,6 +40,9 @@ include::../../modules/overview/con-overview-components-topic-operator.adoc[leve
 
 //description of User Operator
 include::../../modules/overview/con-overview-components-user-operator.adoc[leveloffset=+1]
+
+//description of Drain cleaner
+include::../../modules/overview/con-overview-components-drain-cleaner.adoc[leveloffset=+1]
 
 //description of feature gates
 include::../../modules/overview/con-feature-gates-overview.adoc[leveloffset=+1]

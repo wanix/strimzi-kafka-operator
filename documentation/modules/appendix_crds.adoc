@@ -87,7 +87,7 @@ include::../api/io.strimzi.api.kafka.model.kafka.KafkaClusterSpec.adoc[leveloffs
 |Configures listeners to provide access to Kafka brokers.
 |config
 |map
-|Kafka broker config properties with the following prefixes cannot be set: listeners, advertised., broker., listener., host.name, port, inter.broker.listener.name, sasl., ssl., security., password., log.dir, zookeeper.connect, zookeeper.set.acl, zookeeper.ssl, zookeeper.clientCnxnSocket, authorizer., super.user, cruise.control.metrics.topic, cruise.control.metrics.reporter.bootstrap.servers, node.id, process.roles, controller., metadata.log.dir, zookeeper.metadata.migration.enable, client.quota.callback.static.kafka.admin., client.quota.callback.static.produce, client.quota.callback.static.fetch, client.quota.callback.static.storage.per.volume.limit.min.available., client.quota.callback.static.excluded.principal.name.list (with the exception of: zookeeper.connection.timeout.ms, sasl.server.max.receive.size, ssl.cipher.suites, ssl.protocol, ssl.enabled.protocols, ssl.secure.random.implementation, cruise.control.metrics.topic.num.partitions, cruise.control.metrics.topic.replication.factor, cruise.control.metrics.topic.retention.ms, cruise.control.metrics.topic.auto.create.retries, cruise.control.metrics.topic.auto.create.timeout.ms, cruise.control.metrics.topic.min.insync.replicas, controller.quorum.election.backoff.max.ms, controller.quorum.election.timeout.ms, controller.quorum.fetch.timeout.ms).
+|Kafka broker config properties with the following prefixes cannot be set: listeners, advertised., broker., listener., host.name, port, inter.broker.listener.name, sasl., ssl., security., password., log.dir, zookeeper.connect, zookeeper.set.acl, zookeeper.ssl, zookeeper.clientCnxnSocket, authorizer., super.user, cruise.control.metrics.topic, cruise.control.metrics.reporter.bootstrap.servers, node.id, process.roles, controller., metadata.log.dir, zookeeper.metadata.migration.enable, client.quota.callback.static.kafka.admin., client.quota.callback.static.produce, client.quota.callback.static.fetch, client.quota.callback.static.storage.per.volume.limit.min.available., client.quota.callback.static.excluded.principal.name.list, prometheus.metrics.reporter. (with the exception of: zookeeper.connection.timeout.ms, sasl.server.max.receive.size, ssl.cipher.suites, ssl.protocol, ssl.enabled.protocols, ssl.secure.random.implementation, cruise.control.metrics.topic.num.partitions, cruise.control.metrics.topic.replication.factor, cruise.control.metrics.topic.retention.ms, cruise.control.metrics.topic.auto.create.retries, cruise.control.metrics.topic.auto.create.timeout.ms, cruise.control.metrics.topic.min.insync.replicas, controller.quorum.election.backoff.max.ms, controller.quorum.election.timeout.ms, controller.quorum.fetch.timeout.ms).
 |storage
 |xref:type-EphemeralStorage-{context}[`EphemeralStorage`], xref:type-PersistentClaimStorage-{context}[`PersistentClaimStorage`], xref:type-JbodStorage-{context}[`JbodStorage`]
 |**The `storage` property has been deprecated.** Use `KafkaNodePool` resources. Storage is now configured in the `KafkaNodePool` resources and this option is ignored.
@@ -116,7 +116,7 @@ include::../api/io.strimzi.api.kafka.model.kafka.KafkaClusterSpec.adoc[leveloffs
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#resourcerequirements-v1-core[ResourceRequirements]
 |CPU and memory resources to reserve.
 |metricsConfig
-|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`]
+|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`], xref:type-StrimziMetricsReporter-{context}[`StrimziMetricsReporter`]
 |Metrics configuration.
 |logging
 |xref:type-InlineLogging-{context}[`InlineLogging`], xref:type-ExternalLogging-{context}[`ExternalLogging`]
@@ -747,6 +747,9 @@ It must have the value `simple` for the type `KafkaAuthorizationSimple`.
 [id='type-KafkaAuthorizationOpa-{context}']
 = `KafkaAuthorizationOpa` schema reference
 
+*The type `KafkaAuthorizationOpa` has been deprecated.*
+Please use xref:type-KafkaAuthorizationCustom-{context}[`KafkaAuthorizationCustom`] instead.
+
 Used in: xref:type-KafkaClusterSpec-{context}[`KafkaClusterSpec`]
 
 xref:type-KafkaAuthorizationOpa-schema-{context}[Full list of `KafkaAuthorizationOpa` schema properties]
@@ -1020,7 +1023,7 @@ It must have the value `password` for the type `KafkaJmxAuthenticationPassword`.
 Used in: xref:type-CruiseControlSpec-{context}[`CruiseControlSpec`], xref:type-KafkaClusterSpec-{context}[`KafkaClusterSpec`], xref:type-KafkaConnectSpec-{context}[`KafkaConnectSpec`], xref:type-KafkaMirrorMaker2Spec-{context}[`KafkaMirrorMaker2Spec`], xref:type-ZookeeperClusterSpec-{context}[`ZookeeperClusterSpec`]
 
 
-The `type` property is a discriminator that distinguishes use of the `JmxPrometheusExporterMetrics` type from other subtypes which may be added in the future.
+The `type` property is a discriminator that distinguishes use of the `JmxPrometheusExporterMetrics` type from xref:type-StrimziMetricsReporter-{context}[`StrimziMetricsReporter`].
 It must have the value `jmxPrometheusExporter` for the type `JmxPrometheusExporterMetrics`.
 [cols="2,2,3a",options="header"]
 |====
@@ -1030,7 +1033,7 @@ It must have the value `jmxPrometheusExporter` for the type `JmxPrometheusExport
 |Must be `jmxPrometheusExporter`.
 |valueFrom
 |xref:type-ExternalConfigurationReference-{context}[`ExternalConfigurationReference`]
-|ConfigMap entry where the Prometheus JMX Exporter configuration is stored. 
+|ConfigMap entry where the Prometheus JMX Exporter configuration is stored.
 |====
 
 [id='type-ExternalConfigurationReference-{context}']
@@ -1045,6 +1048,39 @@ Used in: xref:type-ExternalLogging-{context}[`ExternalLogging`], xref:type-JmxPr
 |configMapKeyRef
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#configmapkeyselector-v1-core[ConfigMapKeySelector]
 |Reference to the key in the ConfigMap containing the configuration.
+|====
+
+[id='type-StrimziMetricsReporter-{context}']
+= `StrimziMetricsReporter` schema reference
+
+Used in: xref:type-CruiseControlSpec-{context}[`CruiseControlSpec`], xref:type-KafkaClusterSpec-{context}[`KafkaClusterSpec`], xref:type-KafkaConnectSpec-{context}[`KafkaConnectSpec`], xref:type-KafkaMirrorMaker2Spec-{context}[`KafkaMirrorMaker2Spec`], xref:type-ZookeeperClusterSpec-{context}[`ZookeeperClusterSpec`]
+
+
+The `type` property is a discriminator that distinguishes use of the `StrimziMetricsReporter` type from xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`].
+It must have the value `strimziMetricsReporter` for the type `StrimziMetricsReporter`.
+[cols="2,2,3a",options="header"]
+|====
+|Property |Property type |Description
+|type
+|string
+|Must be `strimziMetricsReporter`.
+|values
+|xref:type-StrimziMetricsReporterValues-{context}[`StrimziMetricsReporterValues`]
+|Configuration values for the Strimzi Metrics Reporter.
+|====
+
+[id='type-StrimziMetricsReporterValues-{context}']
+= `StrimziMetricsReporterValues` schema reference
+
+Used in: xref:type-StrimziMetricsReporter-{context}[`StrimziMetricsReporter`]
+
+
+[cols="2,2,3a",options="header"]
+|====
+|Property |Property type |Description
+|allowList
+|string array
+|A list of regex patterns to filter the metrics to collect. Should contain at least one element.
 |====
 
 [id='type-InlineLogging-{context}']
@@ -1271,19 +1307,22 @@ Used in: xref:type-PodTemplate-{context}[`PodTemplate`]
 |Name to use for the volume. Required.
 |secret
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#secretvolumesource-v1-core[SecretVolumeSource]
-|Secret to use populate the volume.
+|`Secret` to use to populate the volume.
 |configMap
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#configmapvolumesource-v1-core[ConfigMapVolumeSource]
-|ConfigMap to use to populate the volume.
+|`ConfigMap` to use to populate the volume.
 |emptyDir
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#emptydirvolumesource-v1-core[EmptyDirVolumeSource]
-|EmptyDir to use to populate the volume.
+|`EmptyDir` to use to populate the volume.
 |persistentVolumeClaim
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#persistentvolumeclaimvolumesource-v1-core[PersistentVolumeClaimVolumeSource]
-|PersistentVolumeClaim object to use to populate the volume.
+|`PersistentVolumeClaim` object to use to populate the volume.
 |csi
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#csivolumesource-v1-core[CSIVolumeSource]
-|CSIVolumeSource object to use to populate the volume.
+|`CSIVolumeSource` object to use to populate the volume.
+|image
+|https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#imagevolumesource-v1-core[ImageVolumeSource]
+|`ImageVolumeSource` object to use to populate the volume.
 |====
 
 [id='type-InternalServiceTemplate-{context}']
@@ -1552,7 +1591,7 @@ Used in: xref:type-KafkaSpec-{context}[`KafkaSpec`]
 |https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#resourcerequirements-v1-core[ResourceRequirements]
 |CPU and memory resources to reserve.
 |metricsConfig
-|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`]
+|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`], xref:type-StrimziMetricsReporter-{context}[`StrimziMetricsReporter`]
 |Metrics configuration.
 |logging
 |xref:type-InlineLogging-{context}[`InlineLogging`], xref:type-ExternalLogging-{context}[`ExternalLogging`]
@@ -1904,8 +1943,8 @@ include::../api/io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlSpec
 |map
 |The Cruise Control configuration. For a full list of configuration options refer to https://github.com/linkedin/cruise-control/wiki/Configurations. Note that properties with the following prefixes cannot be set: bootstrap.servers, client.id, zookeeper., network., security., failed.brokers.zk.path,webserver.http., webserver.api.urlprefix, webserver.session.path, webserver.accesslog., two.step., request.reason.required,metric.reporter.sampler.bootstrap.servers, capacity.config.file, self.healing., ssl., kafka.broker.failure.detection.enable, topic.config.provider.class (with the exception of: ssl.cipher.suites, ssl.protocol, ssl.enabled.protocols, webserver.http.cors.enabled, webserver.http.cors.origin, webserver.http.cors.exposeheaders, webserver.security.enable, webserver.ssl.enable).
 |metricsConfig
-|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`]
-|Metrics configuration.
+|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`], xref:type-StrimziMetricsReporter-{context}[`StrimziMetricsReporter`]
+|Metrics configuration. Only `jmxPrometheusExporter` can be configured, as this component does not support `strimziMetricsReporter`.
 |apiUsers
 |xref:type-HashLoginServiceApiUsers-{context}[`HashLoginServiceApiUsers`]
 |Configuration of the Cruise Control REST API users.
@@ -2493,8 +2532,8 @@ include::../api/io.strimzi.api.kafka.model.connect.KafkaConnectSpec.adoc[levelof
 |xref:type-Rack-{context}[`Rack`]
 |Configuration of the node label which will be used as the `client.rack` consumer configuration.
 |metricsConfig
-|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`]
-|Metrics configuration.
+|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`], xref:type-StrimziMetricsReporter-{context}[`StrimziMetricsReporter`]
+|Metrics configuration. Only `jmxPrometheusExporter` can be configured, as this component does not yet support `strimziMetricsReporter`.
 |tracing
 |xref:type-JaegerTracing-{context}[`JaegerTracing`], xref:type-OpenTelemetryTracing-{context}[`OpenTelemetryTracing`]
 |The configuration of tracing in Kafka Connect.
@@ -2507,6 +2546,9 @@ include::../api/io.strimzi.api.kafka.model.connect.KafkaConnectSpec.adoc[levelof
 |build
 |xref:type-Build-{context}[`Build`]
 |Configures how the Connect container image should be built. Optional.
+|plugins
+|xref:type-MountedPlugin-{context}[`MountedPlugin`] array
+|List of connector plugins to mount into the `KafkaConnect` pod.
 |====
 
 [id='type-ClientTls-{context}']
@@ -2991,7 +3033,7 @@ It must have the value `docker` for the type `DockerOutput`.
 |Container Registry Secret with the credentials for pushing the newly built image.
 |additionalKanikoOptions
 |string array
-|Configures additional options which will be passed to the Kaniko executor when building the new Connect image. Allowed options are: --customPlatform, --custom-platform, --insecure, --insecure-pull, --insecure-registry, --log-format, --log-timestamp, --registry-mirror, --reproducible, --single-snapshot, --skip-tls-verify, --skip-tls-verify-pull, --skip-tls-verify-registry, --verbosity, --snapshotMode, --use-new-run, --registry-certificate, --registry-client-cert. These options will be used only on Kubernetes where the Kaniko executor is used. They will be ignored on OpenShift. The options are described in the link:https://github.com/GoogleContainerTools/kaniko[Kaniko GitHub repository^]. Changing this field does not trigger new build of the Kafka Connect image.
+|Configures additional options which will be passed to the Kaniko executor when building the new Connect image. Allowed options are: --customPlatform, --custom-platform, --insecure, --insecure-pull, --insecure-registry, --log-format, --log-timestamp, --registry-mirror, --reproducible, --single-snapshot, --skip-tls-verify, --skip-tls-verify-pull, --skip-tls-verify-registry, --verbosity, --snapshotMode, --use-new-run, --registry-certificate, --registry-client-cert, --ignore-path. These options will be used only on Kubernetes where the Kaniko executor is used. They will be ignored on OpenShift. The options are described in the link:https://github.com/GoogleContainerTools/kaniko[Kaniko GitHub repository^]. Changing this field does not trigger new build of the Kafka Connect image.
 |type
 |string
 |Must be `docker`.
@@ -3157,6 +3199,60 @@ Used in: xref:type-Plugin-{context}[`Plugin`]
 |insecure
 |boolean
 |By default, connections using TLS are verified to check they are secure. The server certificate used must be valid, trusted, and contain the server name. By setting this option to `true`, all TLS verification is disabled and the artifact will be downloaded, even when the server is considered insecure.
+|====
+
+[id='type-MountedPlugin-{context}']
+= `MountedPlugin` schema reference
+
+Used in: xref:type-KafkaConnectSpec-{context}[`KafkaConnectSpec`]
+
+xref:type-MountedPlugin-schema-{context}[Full list of `MountedPlugin` schema properties]
+
+include::../api/io.strimzi.api.kafka.model.connect.MountedPlugin.adoc[leveloffset=+1]
+
+[id='type-MountedPlugin-schema-{context}']
+== `MountedPlugin` schema properties
+
+
+[cols="2,2,3a",options="header"]
+|====
+|Property |Property type |Description
+|name
+|string
+|A unique name for the connector plugin. This name is used to generate the mount path for the connector artifacts. The name has to be unique within the KafkaConnect resource. The name must be unique within the `KafkaConnect` resource and match the pattern: `^[a-z][-_a-z0-9]*[a-z]$`. Required.
+|artifacts
+|xref:type-ImageArtifact-{context}[`ImageArtifact`] array
+|List of artifacts associated with this connector plugin. Required.
+|====
+
+[id='type-ImageArtifact-{context}']
+= `ImageArtifact` schema reference
+
+Used in: xref:type-MountedPlugin-{context}[`MountedPlugin`]
+
+
+The `type` property is a discriminator that distinguishes use of the `ImageArtifact` type from other subtypes which may be added in the future.
+It must have the value `image` for the type `ImageArtifact`.
+[cols="2,2,3a",options="header"]
+|====
+|Property |Property type |Description
+|type
+|string
+|Must be `image`.
+|reference
+|string
+|Reference to the container image (OCI artifact) containing the Kafka Connect plugin. The image is mounted as a volume and provides the plugin binary. Required.
+|pullPolicy
+|string
+|Policy that determines when the container image (OCI artifact) is pulled.
+
+Possible values are:
+
+* `Always`: Always pull the image. If the pull fails, container creation fails.
+* `Never`: Never pull the image. Use only a locally available image. Container creation fails if the image isn’t present.
+* `IfNotPresent`: Pull the image only if it’s not already available locally. Container creation fails if the image isn’t present and the pull fails.
+
+Defaults to `Always` if `:latest` tag is specified, or `IfNotPresent` otherwise.
 |====
 
 [id='type-KafkaConnectStatus-{context}']
@@ -4088,8 +4184,8 @@ Used in: xref:type-KafkaMirrorMaker2-{context}[`KafkaMirrorMaker2`]
 |xref:type-Rack-{context}[`Rack`]
 |Configuration of the node label which will be used as the `client.rack` consumer configuration.
 |metricsConfig
-|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`]
-|Metrics configuration.
+|xref:type-JmxPrometheusExporterMetrics-{context}[`JmxPrometheusExporterMetrics`], xref:type-StrimziMetricsReporter-{context}[`StrimziMetricsReporter`]
+|Metrics configuration. Only `jmxPrometheusExporter` can be configured, as this component does not yet support `strimziMetricsReporter`.
 |tracing
 |xref:type-JaegerTracing-{context}[`JaegerTracing`], xref:type-OpenTelemetryTracing-{context}[`OpenTelemetryTracing`]
 |The configuration of tracing in Kafka Connect.
@@ -4349,9 +4445,26 @@ Used in: xref:type-KafkaRebalance-{context}[`KafkaRebalance`]
 |sessionId
 |string
 |The session identifier for requests to Cruise Control pertaining to this KafkaRebalance resource. This is used by the Kafka Rebalance operator to track the status of ongoing rebalancing operations.
+|progress
+|xref:type-KafkaRebalanceProgress-{context}[`KafkaRebalanceProgress`]
+|A reference to Config Map with the progress information.
 |optimizationResult
 |map
 |A JSON object describing the optimization result.
+|====
+
+[id='type-KafkaRebalanceProgress-{context}']
+= `KafkaRebalanceProgress` schema reference
+
+Used in: xref:type-KafkaRebalanceStatus-{context}[`KafkaRebalanceStatus`]
+
+
+[cols="2,2,3a",options="header"]
+|====
+|Property |Property type |Description
+|rebalanceProgressConfigMap
+|string
+|The name of the `ConfigMap` containing information related to the progress of a partition rebalance.
 |====
 
 [id='type-KafkaNodePool-{context}']

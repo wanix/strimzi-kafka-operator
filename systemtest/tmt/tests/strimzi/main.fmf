@@ -3,21 +3,17 @@ test:
 duration: 2h
 environment:
   DOCKER_ORG: "strimzi"
-  DOCKER_TAG: "test"
+  DOCKER_TAG: "latest"
   TEST_LOG_DIR: "systemtest/target/logs"
   TESTS: ""
   TEST_GROUPS: ""
-  EXCLUDED_TEST_GROUPS: "loadbalancer"
-  CLUSTER_OPERATOR_INSTALL_TYPE: bundle
+  EXCLUDED_TEST_GROUPS: ""
+  CLUSTER_OPERATOR_INSTALL_TYPE: yaml
   PARALLELISM_ENABLED: true
   PARALLEL_TEST_COUNT: 2
   RERUN_FAILED_TEST_COUNT: 2
   # All tests on TF will use KRaft mode because ZK is not working reliably on it's infra
   STRIMZI_USE_KRAFT_IN_TESTS: "true"
-adjust:
-  - environment+:
-      EXCLUDED_TEST_GROUPS: "loadbalancer"
-    when: arch == aarch64, arm64
 
 /smoke:
   summary: Run smoke strimzi test suite
@@ -76,10 +72,18 @@ adjust:
     TEST_PROFILE: performance
     PARALLELISM_ENABLED: false
 
-/capacity:
+/user-capacity:
   summary: Run performance capacity strimzi test suite
-  duration: 12h
+  duration: 6h
   tier: 1
   environment+:
-    TEST_PROFILE: capacity
+    TEST_PROFILE: user-capacity
+    PARALLELISM_ENABLED: false
+
+/topic-capacity:
+  summary: Run performance capacity strimzi test suite
+  duration: 2h
+  tier: 1
+  environment+:
+    TEST_PROFILE: topic-capacity
     PARALLELISM_ENABLED: false

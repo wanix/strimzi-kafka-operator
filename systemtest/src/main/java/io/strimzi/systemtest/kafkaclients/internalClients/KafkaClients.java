@@ -10,12 +10,12 @@ import io.fabric8.kubernetes.api.model.LocalObjectReference;
 import io.fabric8.kubernetes.api.model.PodSpecBuilder;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
+import io.skodjob.testframe.resources.KubeResourceManager;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.operator.common.Util;
 import io.strimzi.systemtest.Environment;
 import io.strimzi.systemtest.TestConstants;
 import io.strimzi.systemtest.enums.PodSecurityProfile;
-import io.strimzi.systemtest.resources.ResourceManager;
 import io.strimzi.systemtest.utils.ClientUtils;
 import io.sundr.builder.annotations.Buildable;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
@@ -23,6 +23,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.security.InvalidParameterException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -173,6 +174,14 @@ public class KafkaClients extends BaseClients {
     }
 
     public Job producerTlsStrimzi(final String clusterName) {
+        List<EnvVar> tlsEnvVars = new ArrayList<>();
+        tlsEnvVars.add(this.getClusterCaCertEnv(clusterName));
+        tlsEnvVars.addAll(this.getTlsEnvVars());
+
+        return producerTlsStrimziWithTlsEnvVars(tlsEnvVars);
+    }
+
+    public Job producerTlsStrimziWithTlsEnvVars(List<EnvVar> tlsEnvVars) {
         this.configureTls();
 
         return defaultProducerStrimzi()
@@ -180,8 +189,7 @@ public class KafkaClients extends BaseClients {
                 .editTemplate()
                     .editSpec()
                         .editFirstContainer()
-                            .addToEnv(this.getClusterCaCertEnv(clusterName))
-                            .addAllToEnv(this.getTlsEnvVars())
+                            .addAllToEnv(tlsEnvVars)
                         .endContainer()
                     .endSpec()
                 .endTemplate()
@@ -332,6 +340,14 @@ public class KafkaClients extends BaseClients {
     }
 
     public Job consumerTlsStrimzi(final String clusterName) {
+        List<EnvVar> tlsEnvVars = new ArrayList<>();
+        tlsEnvVars.add(this.getClusterCaCertEnv(clusterName));
+        tlsEnvVars.addAll(this.getTlsEnvVars());
+
+        return consumerTlsStrimziWithTlsEnvVars(tlsEnvVars);
+    }
+
+    public Job consumerTlsStrimziWithTlsEnvVars(final List<EnvVar> tlsEnvVars) {
         this.configureTls();
 
         return defaultConsumerStrimzi()
@@ -339,8 +355,7 @@ public class KafkaClients extends BaseClients {
                 .editTemplate()
                     .editSpec()
                         .editFirstContainer()
-                            .addToEnv(this.getClusterCaCertEnv(clusterName))
-                            .addAllToEnv(this.getTlsEnvVars())
+                            .addAllToEnv(tlsEnvVars)
                         .endContainer()
                     .endSpec()
                 .endTemplate()
@@ -452,7 +467,7 @@ public class KafkaClients extends BaseClients {
             throw new InvalidParameterException("User name for SCRAM-SHA is not set");
         }
 
-        final String saslJaasConfigEncrypted = ResourceManager.kubeClient().getSecret(this.getNamespaceName(), this.getUsername()).getData().get("sasl.jaas.config");
+        final String saslJaasConfigEncrypted = KubeResourceManager.get().kubeClient().getClient().secrets().inNamespace(this.getNamespaceName()).withName(this.getUsername()).get().getData().get("sasl.jaas.config");
         final String saslJaasConfigDecrypted = Util.decodeFromBase64(saslJaasConfigEncrypted);
 
         this.setAdditionalConfig(this.getAdditionalConfig() +
