@@ -364,14 +364,4 @@
   zookeeper: 3.8.4
   third-party-libs: 3.9.x
   supported: true
-  default: false
-- version: 3.9.1
-  format: 3.9
-  protocol: 3.9
-  metadata: 3.9
-  url: https://archive.apache.org/dist/kafka/3.9.1/kafka_2.13-3.9.1.tgz
-  checksum: 1ea204ba73411737a275429ca976d440f007ff0957b90b19be41dc5a4bae52617267769be9f0b5791714d0b3c4c760605bd426faea39edd90763585523fa2cfe
-  zookeeper: 3.8.4
-  third-party-libs: 3.9.x
-  supported: true
   default: true
