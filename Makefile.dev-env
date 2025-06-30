@@ -23,7 +23,7 @@ define help_message =
 Example of usage:
  - Create a branch from the tag you want:
 
-    $$> git checkout -b v0.45.0
+    $$> git checkout -b wanix/dev-0.46.1 0.46.1
 
  - Get the dev files from dev-env branch:
 
