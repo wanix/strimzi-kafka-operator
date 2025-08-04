@@ -274,6 +274,8 @@
                                 <!-- Needed for logging in tests using the Kubernetes Client (uses SLF4J) -->
                                 <ignoredUnusedDeclaredDependency>org.apache.logging.log4j:log4j-slf4j-impl</ignoredUnusedDeclaredDependency>
                                 <ignoredUnusedDeclaredDependency>io.skodjob:test-frame-common</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.valid4j:json-path-matchers</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.skodjob:test-docs-generator-maven-plugin</ignoredUnusedDeclaredDependency>
                             </ignoredUnusedDeclaredDependencies>
                         </configuration>
                     </execution>

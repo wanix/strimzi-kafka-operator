@@ -196,6 +196,7 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.strimzi</groupId>
@@ -326,6 +327,23 @@
                                 <ignoredUnusedDeclaredDependency>io.netty:netty-transport-native-epoll:jar</ignoredUnusedDeclaredDependency>
                                 <!-- Used by KafkaConnectApiIT -->
                                 <ignoredUnusedDeclaredDependency>org.apache.kafka:connect-file</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.fabric8:kubernetes-model-common</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.fabric8:kubernetes-model-coordination</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.junit.jupiter:junit-jupiter-api</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.junit.jupiter:junit-jupiter-params</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.hamcrest:hamcrest</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.vertx:vertx-junit5</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.apache.kafka:connect-api</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:strimzi-test-container</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.apache.kafka:connect-runtime</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mockito:mockito-core</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:test</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:mockkube</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.strimzi:operator-common:test-jar</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.apache.zookeeper:zookeeper-jute</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mock-server:mockserver-netty</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mock-server:mockserver-core</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.mock-server:mockserver-client-java</ignoredUnusedDeclaredDependency>
                             </ignoredUnusedDeclaredDependencies>
                             <ignoredNonTestScopedDependencies>
                                 <!-- Needed for builders used in the code -->

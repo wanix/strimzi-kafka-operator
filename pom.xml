@@ -169,7 +169,7 @@
         supported anymore. This also needs to be used by the kafka-agent module. Strimzi operators uses newer supported
         Jetty version.
         -->
-        <jetty-old-kafka.version>9.4.56.v20240826</jetty-old-kafka.version>
+        <jetty-old-kafka.version>9.4.57.v20241219</jetty-old-kafka.version>
         <javax-servlet.version>3.1.0</javax-servlet.version>
         <strimzi-oauth.version>0.16.2</strimzi-oauth.version>
         <netty.version>4.1.118.Final</netty.version>

@@ -81,6 +81,7 @@ dev_requirements:
 	gem update asciidoctor-pdf
 
 	mvn clean
+	mvn -DskipTests install
 
 minikube_start:
 	@echo "-- Starting Minikube"

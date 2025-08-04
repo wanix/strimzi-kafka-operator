@@ -1,6 +1,6 @@
 FROM strimzi/base:latest
 
-LABEL org.opencontainers.image.source='https://github.com/strimzi/strimzi-kafka-operator'
+LABEL org.opencontainers.image.source='https://github.com/wanix/strimzi-kafka-operator'
 
 ARG KAFKA_DIST_DIR
 ARG KAFKA_VERSION
