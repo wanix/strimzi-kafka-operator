@@ -16,15 +16,15 @@
     </licenses>
 
     <properties>
-        <cruise-control.version>2.5.142</cruise-control.version>
+        <cruise-control.version>2.5.143-SNAPSHOT-talend</cruise-control.version>
     </properties>
 
-    <repositories>
+    <!-- <repositories>
       <repository>
         <id>cruise-control</id>
           <url>https://linkedin.jfrog.io/artifactory/cruise-control/</url>
       </repository>
-    </repositories>
+    </repositories> -->
 
     <dependencies>
         <dependency>
