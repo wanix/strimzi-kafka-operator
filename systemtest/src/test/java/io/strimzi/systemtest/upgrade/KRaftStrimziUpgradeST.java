@@ -43,6 +43,13 @@ public class KRaftStrimziUpgradeST extends AbstractKRaftUpgradeST {
 
     private static final Logger LOGGER = LogManager.getLogger(KRaftStrimziUpgradeST.class);
     private final BundleVersionModificationData acrossUpgradeData = new VersionModificationDataLoader(VersionModificationDataLoader.ModificationType.BUNDLE_UPGRADE).buildDataForUpgradeAcrossVersionsForKRaft();
+    // TODO: Remove this after 1.1.0 release - https://github.com/strimzi/strimzi-kafka-operator/issues/12692
+    private final BundleVersionModificationData conversionUpgradeData = new VersionModificationDataLoader(VersionModificationDataLoader.ModificationType.BUNDLE_UPGRADE)
+        .getBundleUpgradeOrDowngradeDataList()
+        .stream()
+        .filter(data -> data.getFromVersion().equals("0.51.0"))
+        .findFirst()
+        .get();
 
     @MicroShiftNotSupported("Due to lack of Kafka Connect build feature")
     @KindIPv6NotSupported("Our current CI setup doesn't allow pushing into internal registries that is needed in this test")
@@ -62,10 +69,11 @@ public class KRaftStrimziUpgradeST extends AbstractKRaftUpgradeST {
         doKafkaConnectAndKafkaConnectorUpgradeOrDowngradeProcedure(CO_NAMESPACE, testStorage, upgradeData, upgradeKafkaVersion);
     }
 
+    // TODO: Remove this after 1.1.0 release - https://github.com/strimzi/strimzi-kafka-operator/issues/12692
     @IsolatedTest
     void testUpgradeWithCrAndCrdConversion() throws IOException {
         final TestStorage testStorage = new TestStorage(KubeResourceManager.get().getTestContext());
-        BundleVersionModificationData crdUpgradeData = acrossUpgradeData;
+        BundleVersionModificationData crdUpgradeData = conversionUpgradeData;
         crdUpgradeData.setConvertCrsAndCrds(true);
 
         UpgradeKafkaVersion upgradeKafkaVersion = new UpgradeKafkaVersion(crdUpgradeData.getDeployKafkaVersion());
@@ -91,9 +99,6 @@ public class KRaftStrimziUpgradeST extends AbstractKRaftUpgradeST {
 
         // Make snapshots of all Pods
         makeComponentsSnapshots(testStorage.getNamespaceName());
-
-        // Convert CRDs before upgrade
-        convertCrdsOnly(testStorage.getNamespaceName());
 
         // Upgrade CO
         changeClusterOperator(CO_NAMESPACE, testStorage.getNamespaceName(), acrossUpgradeData);
@@ -128,9 +133,6 @@ public class KRaftStrimziUpgradeST extends AbstractKRaftUpgradeST {
         // Make snapshots of all Pods
         makeComponentsSnapshots(testStorage.getNamespaceName());
 
-        // Convert CRDs before upgrade
-        convertCrdsOnly(testStorage.getNamespaceName());
-
         // Upgrade CO
         changeClusterOperator(CO_NAMESPACE, testStorage.getNamespaceName(), acrossUpgradeData);
 
@@ -158,9 +160,6 @@ public class KRaftStrimziUpgradeST extends AbstractKRaftUpgradeST {
 
         // Setup env
         setupEnvAndUpgradeClusterOperator(CO_NAMESPACE, testStorage, acrossUpgradeData, null);
-
-        // Convert CRDs before upgrade
-        convertCrdsOnly(testStorage.getNamespaceName());
 
         // Upgrade CO
         changeClusterOperator(CO_NAMESPACE, testStorage.getNamespaceName(), acrossUpgradeData);
