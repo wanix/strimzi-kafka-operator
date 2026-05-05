@@ -55,6 +55,7 @@ import io.strimzi.operator.cluster.operator.resource.kubernetes.StrimziPodSetOpe
 import io.strimzi.operator.common.InvalidConfigurationException;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
+import io.strimzi.operator.common.model.CaConfig;
 import io.strimzi.operator.common.model.ClientsCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
@@ -206,10 +207,7 @@ public class KafkaAssemblyOperatorWithKRaftTest {
             PASSWORD_GENERATOR,
             ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
             ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
-            365,
-            30,
-            true,
-            null
+            CaConfig.createDefault()
     );
 
     protected static Vertx vertx;
