@@ -1,0 +1,122 @@
+SHELL = /usr/bin/env bash
+
+.PHONY : dev_requirements \
+	dev_clean \
+	minikube_start \
+	minikube_stop \
+	minikube_clean
+
+docker_registry=$(or $(DOCKER_REGISTRY),docker.io)
+docker_org=$(or $(DOCKER_ORG),$(shell git remote get-url origin | cut -f2 -d":" | cut -f1 -d"/"))
+
+k8scluster=strimzi-k8s
+k8s_ns=strimzi-dev
+kubeconfig=kubeconfig
+kubeversion=$(shell grep "kubectl " .tool-versions | cut -d " " -f 2)
+
+minikubeResources=--memory 2048 --cpus 2
+minikubeDriver=docker
+minikubeNodes=3
+
+
+define help_message =
+Example of usage:
+ - Create a branch from the tag you want:
+
+    $$> git checkout -b wanix/dev-0.46.1 0.46.1
+
+ - Get the dev files from dev-env branch:
+
+    $$> git checkout wanix/dev-env .tool-versions Makefile.dev-env
+
+ - Have a look on Strimzi dev doc for the vars you can play with: https://github.com/strimzi/strimzi-kafka-operator/blob/main/development-docs/DEV_GUIDE.md
+
+ - Prepare your env, following the doc, you can play with $MVN_ARGS arg
+
+   MVN_ARGS=-DskipTests : will compile test code, but not run unit or integration tests
+	 MVN_ARGS=-DskipITs : will compile test code and run unit tests, but not integration tests
+	 MVN_ARGS=-Dmaven.test.skip=true : won't compile test code and won't run unit or integration tests the integration tests.
+
+    $$> make -f Makefile.dev-env dev_requirements
+    # or
+    $$> MVN_ARGS="-Dmaven.test.skip=true" make -f Makefile.dev-env dev_requirements
+
+ - Do the build, using the same MVN_ARGS if any than the preparation, you can use there $DOCKER_TAG, $DOCKER_PLATFORM, $DOCKER_REGISTRY, $DOCKER_ORG
+
+    $$> DOCKER_TAG="0.45.0" DOCKER_PLATFORM="--platform linux/amd64,linux/arm64" make -f Makefile.dev-env build
+    # or for example
+    $$> MVN_ARGS="-Dmaven.test.skip=true" DOCKER_TAG="0.45.0" DOCKER_PLATFORM="--platform linux/amd64,linux/arm64" make -f Makefile.dev-env build
+
+ - For any weird situation after several build, try to clean the build, or at worse clean all (also if you wan to change MVN_ARGS for a new build)
+
+   $$> make -f Makefile.dev-env build_clean
+   # or for bigger clean, then get back to env preparation
+   $$> make -f Makefile.dev-env dev_clean
+
+endef
+
+help:; @ $(info $(help_message)) :
+
+dev_clean: minikube_clean
+	-make clean
+	-docker buildx prune -f
+	-gem uninstall asciidoctor-pdf
+	-gem uninstall asciidoctor
+	-grep -v '^\s*#' .tool-versions \
+	  | grep '\S' \
+	  | xargs -L 1 asdf uninstall
+
+dev_requirements:
+	# for Ruby: sudo apt-get install libz-dev libssl-dev libffi-dev libyaml-dev
+	@grep -v '^\s*#' .tool-versions \
+	  | grep '\S' \
+	  | awk '{print $1}' \
+	  | xargs -L 1 asdf plugin add
+
+	-asdf install
+
+	gem install asciidoctor
+	gem install asciidoctor-pdf
+	gem update asciidoctor
+	gem update asciidoctor-pdf
+
+	mvn clean
+
+minikube_start:
+	@echo "-- Starting Minikube"
+	@minikube start -p $(k8scluster) $(minikubeResources) \
+		--kubernetes-version=$(kubeversion) \
+		--driver=$(minikubeDriver) \
+		--nodes $(minikubeNodes) \
+
+minikube_stop:
+	-@minikube stop -p $(k8scluster)
+
+minikube_clean: minikube_stop
+	-@minikube delete -p $(k8scluster)
+
+minikube_dashboard:
+	@echo "-- Launching Minikube dashboard"
+	@minikube dashboard -p $(k8scluster)
+
+build_clean:
+	-make clean
+	-docker buildx prune -f
+
+build: minikube_start
+ifdef DOCKER_PLATFORM
+	docker run --privileged --rm tonistiigi/binfmt --install all
+endif
+	DOCKER_REGISTRY="$(docker_registry)" DOCKER_ORG="$(docker_org)" make all
+
+build_deploy: build
+	sed -Ei -e "s#(image|value): quay.io/strimzi/([a-z0-9-]+):latest#\1: $(docker_registry)/$(docker_org)/\2:latest#" \
+	  -e "s#(image|value): quay.io/strimzi/([a-zA-Z0-9-]+:[0-9.]+)#\1: $$(docker_registry)/$(docker_org)/\2#" \
+	  -e "s#([0-9.]+)=quay.io/strimzi/([a-zA-Z0-9-]+:[a-zA-Z0-9.-]+-kafka-[0-9.]+)#\1=$$(docker_registry)/$(docker_org)/\2#" \
+	  packaging/install/cluster-operator/060-Deployment-strimzi-cluster-operator.yaml
+	sed -Ei "s/myproject/$(k8s_ns)/g" packaging/install/cluster-operator/*RoleBinding*.yaml
+	kubectl -n $(k8s_ns) create -f packaging/install/cluster-operator
+	kubectl -n $(k8s_ns) create -f packaging/examples/kafka/kafka-ephemeral.yaml
+
+env_test:
+	echo $(docker_registry)
