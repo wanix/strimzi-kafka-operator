@@ -11,6 +11,7 @@ import io.skodjob.annotations.SuiteDoc;
 import io.skodjob.annotations.TestDoc;
 import io.skodjob.kubetest4j.resources.KubeResourceManager;
 import io.skodjob.kubetest4j.wait.WaitException;
+import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.topic.KafkaTopic;
 import io.strimzi.systemtest.AbstractST;
 import io.strimzi.systemtest.Environment;
@@ -46,6 +47,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -98,7 +100,7 @@ public class TopicOperatorPerformance extends AbstractST {
             @Step(value = "Start collecting Topic Operator metrics.", expected = "Metrics collection is running."),
             @Step(value = "Create KafkaTopics in batches of 100, each with 12 partitions and 3 replicas.", expected = "Topics are created and reach Ready state."),
             @Step(value = "Continue creating topic batches until the Topic Operator fails to reconcile.", expected = "Maximum capacity is reached and failure is detected."),
-            @Step(value = "Collect logs from Topic Operator and Kafka pods for analysis.", expected = "Logs are collected for identifying bottlenecks."),
+            @Step(value = "Collect scoped logs (pods, deployments, configmaps, Kafka CR) using TestLogCollector with a custom resource list to avoid collecting thousands of KafkaTopic CRs and Secrets.", expected = "Logs are collected for identifying bottlenecks."),
             @Step(value = "Clean up all KafkaTopics and persist performance metrics.", expected = "Namespace is cleaned and performance data is saved to topic-operator report directory.")
         },
         labels = {
@@ -120,6 +122,7 @@ public class TopicOperatorPerformance extends AbstractST {
                     .editSpec()
                         .withNewPersistentClaimStorage()
                             .withSize("50Gi")
+                            .withDeleteClaim(true)
                         .endPersistentClaimStorage()
                     .endSpec()
                     .build(),
@@ -127,6 +130,7 @@ public class TopicOperatorPerformance extends AbstractST {
                     .editSpec()
                         .withNewPersistentClaimStorage()
                             .withSize("5Gi")
+                            .withDeleteClaim(true)
                         .endPersistentClaimStorage()
                     .endSpec()
                     .build()
@@ -207,9 +211,16 @@ public class TopicOperatorPerformance extends AbstractST {
                 } catch (WaitException e) {
                     LOGGER.error("Failed to create Kafka topics from index {} to {}: {}", start, end, e.getMessage());
 
-                    // after a failure we will gather logs from all components under test (i.e., TO, Kafka pods) to observer behaviour
-                    // what might be a bottleneck of such performance
-                    this.logCollector = new TestLogCollector();
+                    this.logCollector = TestLogCollector.of(
+                        // Pod logs and descriptions are always collected by LogCollector automatically.
+                        // Here we scope the additional namespaced resources to only deployments, configmaps, and Kafka CRs,
+                        // avoiding the default full set which would include thousands of KafkaTopic CRs.
+                        TestLogCollector.defaultLogCollectorBuilder()
+                            .withNamespacedResources(
+                                TestConstants.DEPLOYMENT.toLowerCase(Locale.ROOT),
+                                TestConstants.CONFIG_MAP.toLowerCase(Locale.ROOT),
+                                Kafka.RESOURCE_SINGULAR
+                            ).build());
                     this.logCollector.collectLogs();
 
                     break; // Break out of the loop if an error occurs
