@@ -1077,6 +1077,36 @@ public class KafkaRebalanceAssemblyOperatorTest extends AbstractKafkaRebalanceAs
     }
 
     /**
+     * Tests validation error when rebalanceDisk is true but goals are provided
+     *
+     * 1. A new KafkaRebalance resource is created with rebalanceDisk: true and some goals; it is in the 'New' state
+     * 2. The operator validates the spec and rejects it due to incompatible configuration
+     * 3. The KafkaRebalance resource moves to the 'NotReady' state with an error
+     */
+    @Test
+    public void testRebalanceDiskWithGoalsRebalance(VertxTestContext context) {
+        KafkaRebalanceSpec kafkaRebalanceSpec = new KafkaRebalanceSpecBuilder()
+                .withRebalanceDisk(true)
+                .withGoals("DiskCapacityGoal", "CpuCapacityGoal")
+                .build();
+
+        KafkaRebalance kr = createKafkaRebalance(namespace, CLUSTER_NAME, RESOURCE_NAME, kafkaRebalanceSpec, false);
+        Crds.kafkaRebalanceOperation(client).inNamespace(namespace).resource(kr).create();
+        crdCreateKafka();
+        crdCreateCruiseControlSecrets();
+
+        Checkpoint checkpoint = context.checkpoint();
+        krao.reconcile(new Reconciliation("test-trigger", KafkaRebalance.RESOURCE_KIND, namespace, kr.getMetadata().getName()))
+                .onComplete(context.succeeding(v -> context.verify(() -> {
+                    // the resource moved from New to NotReady due to validation error
+                    assertState(context, client, namespace, kr.getMetadata().getName(),
+                            KafkaRebalanceState.NotReady, IllegalArgumentException.class,
+                            "The goals list should be empty when using the `rebalanceDisk: true` configuration for intra-broker disk balancing");
+                    checkpoint.flag();
+                })));
+    }
+
+    /**
      * Tests the transition from 'New' to 'PendingProposal' then the resource is deleted
      *
      * 1. A new KafkaRebalance resource is created; it is in the New state
