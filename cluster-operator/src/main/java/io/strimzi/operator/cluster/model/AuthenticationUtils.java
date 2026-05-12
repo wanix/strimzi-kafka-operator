@@ -4,40 +4,38 @@
  */
 package io.strimzi.operator.cluster.model;
 
-import io.fabric8.kubernetes.api.model.EnvVar;
+import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeMount;
+import io.fabric8.kubernetes.api.model.rbac.PolicyRule;
+import io.fabric8.kubernetes.api.model.rbac.PolicyRuleBuilder;
+import io.fabric8.kubernetes.api.model.rbac.Role;
+import io.fabric8.kubernetes.api.model.rbac.RoleBinding;
+import io.fabric8.kubernetes.api.model.rbac.RoleRef;
+import io.fabric8.kubernetes.api.model.rbac.RoleRefBuilder;
+import io.fabric8.kubernetes.api.model.rbac.Subject;
+import io.fabric8.kubernetes.api.model.rbac.SubjectBuilder;
+import io.strimzi.api.kafka.model.common.ClientTls;
 import io.strimzi.api.kafka.model.common.authentication.KafkaClientAuthentication;
 import io.strimzi.api.kafka.model.common.authentication.KafkaClientAuthenticationPlain;
 import io.strimzi.api.kafka.model.common.authentication.KafkaClientAuthenticationScram;
 import io.strimzi.api.kafka.model.common.authentication.KafkaClientAuthenticationTls;
 import io.strimzi.operator.common.model.InvalidResourceException;
+import io.strimzi.operator.common.model.Labels;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Set;
 import java.util.StringJoiner;
-import java.util.function.Function;
 
 /**
  * Utils for working with different authentication types
  */
 public class AuthenticationUtils {
-    /**
-     * Key for a SASL username
-     */
-    public static final String SASL_USERNAME = "SASL_USERNAME";
-
-    /**
-     * Key for a SASL mechanism
-     */
-    public static final String SASL_MECHANISM = "SASL_MECHANISM";
-
-    private static final String TLS_AUTH_CERT = "TLS_AUTH_CERT";
-    private static final String TLS_AUTH_KEY = "TLS_AUTH_KEY";
-    private static final String SASL_PASSWORD_FILE = "SASL_PASSWORD_FILE";
 
     private AuthenticationUtils() { }
 
@@ -131,30 +129,6 @@ public class AuthenticationUtils {
     }
 
     /**
-     * Configured environment variables related to authentication in Kafka clients within Strimzi-based containers
-     *
-     * @param authentication    Authentication object with auth configuration
-     * @param varList   List where the new environment variables should be added
-     * @param envVarNamer   Function for naming the environment variables (ech components is using different names)
-     */
-    public static void configureClientAuthenticationEnvVars(KafkaClientAuthentication authentication, List<EnvVar> varList, Function<String, String> envVarNamer)   {
-        if (authentication != null) {
-            if (authentication instanceof KafkaClientAuthenticationTls tlsAuth) {
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(TLS_AUTH_CERT), String.format("%s/%s", tlsAuth.getCertificateAndKey().getSecretName(), tlsAuth.getCertificateAndKey().getCertificate())));
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(TLS_AUTH_KEY), String.format("%s/%s", tlsAuth.getCertificateAndKey().getSecretName(), tlsAuth.getCertificateAndKey().getKey())));
-            } else if (authentication instanceof KafkaClientAuthenticationPlain passwordAuth) {
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(SASL_USERNAME), passwordAuth.getUsername()));
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(SASL_PASSWORD_FILE), String.format("%s/%s", passwordAuth.getPasswordSecret().getSecretName(), passwordAuth.getPasswordSecret().getPassword())));
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(SASL_MECHANISM), KafkaClientAuthenticationPlain.TYPE_PLAIN));
-            } else if (authentication instanceof KafkaClientAuthenticationScram scramAuth) {
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(SASL_USERNAME), scramAuth.getUsername()));
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(SASL_PASSWORD_FILE), String.format("%s/%s", scramAuth.getPasswordSecret().getSecretName(), scramAuth.getPasswordSecret().getPassword())));
-                varList.add(ContainerUtils.createEnvVar(envVarNamer.apply(SASL_MECHANISM), scramAuth.getType()));
-            }
-        }
-    }
-
-    /**
      * Generates a JAAS configuration string based on the provided module name and options.
      * The flag will always be "required".
      *
@@ -182,5 +156,107 @@ public class AuthenticationUtils {
             }
         }
         return moduleName + " required " + joiner + ";";
+    }
+
+    /**
+     * Collects the names of Secrets that need to be accessible for authentication and TLS configuration.
+     * This includes trusted certificates for TLS connections and authentication credentials.
+     *
+     * @param tls                           The TLS configuration containing trusted certificates
+     * @param authentication                The authentication configuration (TLS, PLAIN, or SCRAM)
+     * @param tlsTrustedCertsSecretName     The name of the secret containing TLS trusted certificates (component-specific)
+     * @return List of secret names that need to be accessible
+     */
+    public static Set<String> getAuthenticationSecretsToAccess(ClientTls tls, KafkaClientAuthentication authentication, String tlsTrustedCertsSecretName) {
+        Set<String> secretNames = new HashSet<>();
+
+        // Add TLS trusted certificates secret if configured
+        if (tls != null && tls.getTrustedCertificates() != null && !tls.getTrustedCertificates().isEmpty()) {
+            secretNames.add(tlsTrustedCertsSecretName);
+        }
+
+        // Add authentication secrets based on authentication type
+        if (authentication != null) {
+            if (authentication instanceof KafkaClientAuthenticationTls tlsAuth && tlsAuth.getCertificateAndKey() != null) {
+                secretNames.add(tlsAuth.getCertificateAndKey().getSecretName());
+            } else if (authentication instanceof KafkaClientAuthenticationPlain plainAuth) {
+                secretNames.add(plainAuth.getPasswordSecret().getSecretName());
+            } else if (authentication instanceof KafkaClientAuthenticationScram scramAuth) {
+                secretNames.add(scramAuth.getPasswordSecret().getSecretName());
+            }
+        }
+
+        return secretNames;
+    }
+
+    /**
+     * Generates a Kubernetes Role for accessing authentication secrets.
+     * The Role grants "get" permission on specific secrets needed for authentication and TLS.
+     * Returns null if no secrets need to be accessed.
+     *
+     * @param componentName     The name of the component (used as role name)
+     * @param namespace         The namespace where the role will be created
+     * @param secretNames       List of secret names that need to be accessible
+     * @param labels            Labels to apply to the role
+     * @param ownerReference    Owner reference for the role
+     * @return Role resource or null if no secrets need to be accessed
+     */
+    public static Role generateAuthenticationSecretsRole(
+            String componentName,
+            String namespace,
+            Set<String> secretNames,
+            Labels labels,
+            OwnerReference ownerReference) {
+        if (secretNames.isEmpty()) {
+            return null;
+        } else {
+            List<PolicyRule> rules = List.of(new PolicyRuleBuilder()
+                    .withApiGroups("")
+                    .withResources("secrets")
+                    .withVerbs("get")
+                    .withResourceNames(secretNames.stream().toList())
+                    .build());
+
+            return RbacUtils.createRole(componentName, namespace, rules, labels, ownerReference, null);
+        }
+    }
+
+    /**
+     * Generates a Kubernetes RoleBinding for the authentication secrets Role.
+     * Binds the ServiceAccount to the Role created for the component.
+     * Returns null if no secrets need to be accessed.
+     *
+     * @param roleBindingName   The name of the role binding
+     * @param componentName     The name of the component (used as service account name)
+     * @param namespace         The namespace where the role binding will be created
+     * @param secretNames       List of secret names that need to be accessible
+     * @param labels            Labels to apply to the role binding
+     * @param ownerReference    Owner reference for the role binding
+     * @return RoleBinding resource or null if no secrets need to be accessed
+     */
+    public static RoleBinding generateAuthenticationSecretsRoleBinding(
+            String roleBindingName,
+            String componentName,
+            String namespace,
+            Set<String> secretNames,
+            Labels labels,
+            OwnerReference ownerReference) {
+        if (secretNames.isEmpty()) {
+            return null;
+        } else {
+            Subject subject = new SubjectBuilder()
+                    .withKind("ServiceAccount")
+                    .withName(componentName)
+                    .withNamespace(namespace)
+                    .build();
+
+            RoleRef roleRef = new RoleRefBuilder()
+                    .withName(componentName)
+                    .withApiGroup("rbac.authorization.k8s.io")
+                    .withKind("Role")
+                    .build();
+
+            return RbacUtils.createRoleBinding(roleBindingName, namespace, roleRef, List.of(subject), labels, ownerReference, null);
+        }
     }
 }
